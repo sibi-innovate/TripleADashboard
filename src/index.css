@@ -1,0 +1,202 @@
+/* Open Sans — official AIA digital fallback (Google Fonts) */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+/* AIA Everest — official brand typeface */
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-RegularItalic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-MediumItalic.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest';
+  src: url('/fonts/AIAEverest-ExtraBold.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+/* AIA Everest Condensed — for compact display use */
+@font-face {
+  font-family: 'AIA Everest Condensed';
+  src: url('/fonts/AIAEverest-Condensed.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'AIA Everest Condensed';
+  src: url('/fonts/AIAEverest-CondensedMedium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── AIA Brand Tokens ──────────────────────────────────────────────── */
+:root {
+  --red:      #D31145;
+  --red-80:   #DC3F69;
+  --red-60:   #E56E8D;
+  --red-40:   #ED9DB2;
+  --red-20:   #F6CCD9;
+  --charcoal: #333D47;
+  --char-60:  #848A90;
+  --char-20:  #D6D8DA;
+  --white:    #FFFFFF;
+  --offwhite: #FAFAFA;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'AIA Everest', 'Open Sans', system-ui, -apple-system, sans-serif;
+  background-color: var(--offwhite);
+  color: var(--charcoal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--red-20);
+  color: var(--charcoal);
+}
+
+/* ─── Entrance Animations ───────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out both;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.5s ease-out both;
+}
+
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.20s; }
+.delay-5 { animation-delay: 0.25s; }
+.delay-6 { animation-delay: 0.30s; }
+.delay-7 { animation-delay: 0.35s; }
+.delay-8 { animation-delay: 0.40s; }
+
+/* ─── Moving Mountains SVG Backgrounds ──────────────────────────────── */
+.mountains-red-bg {
+  position: relative;
+}
+.mountains-red-bg::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1080 200' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'%3E%3Cpolygon points='0,200 160,60 320,200' fill='%23F6CCD9' opacity='1'/%3E%3Cpolygon points='160,200 380,20 600,200' fill='%23E56E8D' opacity='0.9'/%3E%3Cpolygon points='420,200 660,40 900,200' fill='%23DC3F69' opacity='0.9'/%3E%3Cpolygon points='680,200 900,0 1080,200' fill='%23D31145' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+.mountains-white-bg {
+  position: relative;
+}
+.mountains-white-bg::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1080 200' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'%3E%3Cpolygon points='0,200 160,60 320,200' fill='white' opacity='0.12'/%3E%3Cpolygon points='160,200 380,20 600,200' fill='white' opacity='0.45'/%3E%3Cpolygon points='420,200 660,40 900,200' fill='white' opacity='0.7'/%3E%3Cpolygon points='680,200 900,0 1080,200' fill='white' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--char-20);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--char-60);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

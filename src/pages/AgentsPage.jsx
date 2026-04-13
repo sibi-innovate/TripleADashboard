@@ -365,6 +365,7 @@ export default function AgentsPage() {
                       onClick={() => handleSortClick(col)}
                       className={[
                         'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] select-none whitespace-nowrap',
+                        col.key === 'name' ? 'sticky left-0 z-20 border-r border-[#b80e3a]' : '',
                         col.sortable
                           ? 'cursor-pointer hover:bg-[#b80e3a] transition-colors duration-100'
                           : '',
@@ -397,15 +398,15 @@ export default function AgentsPage() {
                     return (
                       <tr
                         key={agent.code ?? rowNum}
-                        className="transition-colors duration-75 hover:bg-slate-50 even:bg-gray-50"
+                        className="group transition-colors duration-75 hover:bg-slate-50 even:bg-gray-50"
                       >
                         {/* # */}
                         <td className="px-3 py-2.5 text-gray-400 font-mono text-xs tabular-nums">
                           {rowNum}
                         </td>
 
-                        {/* Name */}
-                        <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">
+                        {/* Name — sticky */}
+                        <td className="sticky left-0 z-10 px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap bg-white group-even:bg-gray-50 group-hover:bg-slate-50 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                           {agent.code
                             ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>
                             : (agent.name ?? '—')

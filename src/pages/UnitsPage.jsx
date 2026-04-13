@@ -306,10 +306,10 @@ export default function UnitsPage() {
                 <thead>
                   <tr>
                     {/* Expand toggle column — no sort */}
-                    <th className="px-3 py-2.5 w-10 bg-[#D31145]" aria-label="Expand" />
+                    <th className="sticky left-0 z-20 px-3 py-2.5 w-10 bg-[#D31145]" aria-label="Expand" />
 
                     <th
-                      className={thBase}
+                      className={`sticky left-10 z-20 border-r border-[#b80e3a] ${thBase}`}
                       onClick={() => handleSort('unitName')}
                     >
                       Unit
@@ -376,10 +376,10 @@ export default function UnitsPage() {
                       /* Main unit row */
                       <tr
                         key={`unit-${key}`}
-                        className="even:bg-gray-50 border-b border-gray-100 hover:bg-red-50 transition-colors duration-100"
+                        className="group even:bg-gray-50 border-b border-gray-100 hover:bg-red-50 transition-colors duration-100"
                       >
-                        {/* Expand toggle */}
-                        <td className="px-4 py-3 text-center">
+                        {/* Expand toggle — sticky */}
+                        <td className="sticky left-0 z-10 px-4 py-3 text-center bg-white group-even:bg-gray-50 group-hover:bg-red-50">
                           <button
                             onClick={() => toggleRow(key)}
                             aria-label={isExpanded ? 'Collapse' : 'Expand'}
@@ -401,9 +401,16 @@ export default function UnitsPage() {
                           </button>
                         </td>
 
-                        {/* Unit name */}
-                        <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
-                          {unit.unitName || unit.unitCode || '—'}
+                        {/* Unit name — sticky, clickable */}
+                        <td className="sticky left-10 z-10 px-4 py-3 font-semibold text-gray-900 whitespace-nowrap bg-white group-even:bg-gray-50 group-hover:bg-red-50 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                          {unit.unitCode
+                            ? (
+                              <Link to={`/unit/${unit.unitCode}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">
+                                {unit.unitName || unit.unitCode}
+                              </Link>
+                            )
+                            : (unit.unitName || '—')
+                          }
                           {unit.unitCode && unit.unitName && (
                             <span className="ml-2 text-[10px] text-gray-400 font-normal">
                               {unit.unitCode}

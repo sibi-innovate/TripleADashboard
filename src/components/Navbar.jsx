@@ -21,7 +21,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleUploadNew = () => {
-    navigate('/');
+    navigate('/', { state: { intentUpload: true } });
   };
 
   return (

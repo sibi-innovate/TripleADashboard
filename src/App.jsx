@@ -12,6 +12,7 @@ import ActivationPage from './pages/ActivationPage'
 import TargetsPage from './pages/TargetsPage'
 import AwardsPage from './pages/AwardsPage'
 import AgentProfilePage from './pages/AgentProfilePage'
+import UnitProfilePage from './pages/UnitProfilePage'
 import BulletinPage from './pages/BulletinPage'
 import HighlightsPage from './pages/HighlightsPage'
 
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/agents"          element={<WithNavbar><AgentsPage /></WithNavbar>} />
           <Route path="/awards"          element={<WithNavbar><AwardsPage /></WithNavbar>} />
           <Route path="/agent/:code"     element={<WithNavbar><AgentProfilePage /></WithNavbar>} />
+          <Route path="/unit/:unitCode"  element={<WithNavbar><UnitProfilePage /></WithNavbar>} />
           <Route path="/bulletin"        element={<WithNavbar><BulletinPage /></WithNavbar>} />
           <Route path="/highlights"      element={<WithNavbar><HighlightsPage /></WithNavbar>} />
           <Route path="*"               element={<Navigate to="/" replace />} />

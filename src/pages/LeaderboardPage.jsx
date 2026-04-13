@@ -433,7 +433,7 @@ export default function LeaderboardPage() {
                     <thead>
                       <tr>
                         <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] w-14">Rank</th>
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[180px]">Advisor</th>
+                        <th className="sticky left-0 z-20 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[180px] border-r border-[#b80e3a]">Advisor</th>
                         <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[90px]">Area</th>
                         <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[130px]">Unit</th>
                         <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[100px]">ANP</th>
@@ -453,11 +453,11 @@ export default function LeaderboardPage() {
                           !isTop3 && 'hover:bg-red-50/30',
                         ].filter(Boolean).join(' ')
                         return (
-                          <tr key={agent.code ?? idx} className={rowCls}>
+                          <tr key={agent.code ?? idx} className={`group ${rowCls}`}>
                             <td className="px-4 py-2.5 font-bold text-aia-darkGray tabular-nums">
                               {isTop3 ? <span className="text-lg leading-none">{MEDAL[idx]}</span> : <span className="text-gray-500">{rank}</span>}
                             </td>
-                            <td className="px-4 py-2.5">
+                            <td className={`sticky left-0 z-10 px-4 py-2.5 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)] ${isTop3 ? ['bg-yellow-50/40','bg-gray-50/60','bg-amber-50/30'][idx] : 'bg-white group-even:bg-gray-50'}`}>
                               <div className="font-semibold text-aia-darkGray leading-snug text-sm">
                                 {agent.code
                                   ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>

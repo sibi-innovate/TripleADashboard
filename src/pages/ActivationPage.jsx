@@ -175,7 +175,7 @@ export default function ActivationPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[160px]">Name</th>
+                    <th className="sticky left-0 z-20 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[160px] border-r border-[#b80e3a]">Name</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[80px]">Area</th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[120px]">Unit</th>
                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[110px]">Days Since Appt</th>
@@ -202,8 +202,8 @@ export default function ActivationPage() {
                       const areaShort = a.area === 'SCM2 (Davao)' ? 'Davao' : a.area === 'SCM3 (Gensan)' ? 'Gensan' : a.area
 
                       return (
-                        <tr key={a.code ?? idx} className="even:bg-gray-50">
-                          <td className="px-3 py-2.5">
+                        <tr key={a.code ?? idx} className="group even:bg-gray-50">
+                          <td className="sticky left-0 z-10 px-3 py-2.5 bg-white group-even:bg-gray-50 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                             <div className="font-semibold text-aia-darkGray text-xs">
                               {a.code
                                 ? <Link to={`/agent/${a.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{a.name}</Link>

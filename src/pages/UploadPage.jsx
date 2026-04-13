@@ -1,16 +1,20 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 
 export default function UploadPage() {
   const { loadData, isLoaded, isLoading, error, data } = useData()
   const navigate = useNavigate()
+  const location = useLocation()
   const inputRef = useRef(null)
+
+  // True when user explicitly clicked "Upload New" from the dashboard
+  const intentUpload = !!location.state?.intentUpload
 
   const [isDragging,    setIsDragging]    = useState(false)
   const [localError,    setLocalError]    = useState(null)
-  const [adminOpen,     setAdminOpen]     = useState(false)
+  const [adminOpen,     setAdminOpen]     = useState(intentUpload)
   const [authUser,      setAuthUser]      = useState(null)
   const [authChecked,   setAuthChecked]   = useState(false)
   const [loginEmail,    setLoginEmail]    = useState('')
@@ -32,12 +36,20 @@ export default function UploadPage() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Redirect to overview after successful load
+  // Track when a new upload just finished so we can redirect after it
+  const wasLoadingRef = useRef(false)
   useEffect(() => {
-    if (!isLoading && isLoaded && !error) {
+    if (isLoading) {
+      wasLoadingRef.current = true
+    } else if (wasLoadingRef.current && isLoaded && !error) {
+      // A load just completed (either initial fetch or new upload)
+      wasLoadingRef.current = false
+      navigate('/overview')
+    } else if (!isLoading && isLoaded && !error && !intentUpload) {
+      // Fresh page visit with data already loaded (not intentional upload) → redirect
       navigate('/overview')
     }
-  }, [isLoading, isLoaded, error, navigate])
+  }, [isLoading, isLoaded, error, navigate, intentUpload])
 
   // ── Auth handlers ──────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 import KpiCard from '../components/KpiCard'
@@ -160,7 +160,6 @@ function PodiumCard({ title, agents, formatFn }) {
 
 export default function BulletinPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
 
   const [selectedMonth, setSelectedMonth] = useState(MONTH_ABBRS[CURRENT_MONTH_IDX])
 
@@ -291,9 +290,6 @@ export default function BulletinPage() {
     const avgAr        = arVals.length ? arVals.reduce((s, v) => s + v, 0) / arVals.length : null
     return { producing, totalCases, totalFyp, totalFyc, totalAnp, avgAr }
   }, [rawAgents, selectedMonth])
-
-  // ── Early return after all hooks ─────────────────────────────────────────────
-  if (!isLoaded) { navigate('/'); return null }
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (

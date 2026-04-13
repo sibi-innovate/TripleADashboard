@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   ResponsiveContainer,
   BarChart, Bar,
@@ -176,7 +175,6 @@ const SEGMENTS = ['All', 'Rookie', 'Seasoned']
 
 export default function QuarterlyBonusPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
 
   const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`
 
@@ -206,9 +204,6 @@ export default function QuarterlyBonusPage() {
       })
       .sort((a, b) => b.bonus.totalBonus - a.bonus.totalBonus)
   }, [agents, quarter, areaFilter, segFilter, showOnly, search])
-
-  // ── Early return AFTER all hooks
-  if (!isLoaded) { navigate('/'); return null }
 
   const totalBonusPool  = bonusRows.reduce((s, a) => s + a.bonus.totalBonus, 0)
   const qualifyingCount = bonusRows.filter(a => a.bonus.totalBonus > 0).length

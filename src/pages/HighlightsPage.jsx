@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 import { exportHighlightsReport } from '../utils/exportExcel'
@@ -160,7 +160,6 @@ function GamaBar({ label, ytdFyp }) {
 
 export default function HighlightsPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
 
   const [selectedMonth, setSelectedMonth] = useState(MONTH_ABBRS[new Date().getMonth()])
   const [topMetric,     setTopMetric]     = useState('FYC')   // FYC | FYP | Cases
@@ -279,9 +278,6 @@ export default function HighlightsPage() {
   )
 
   const monthLabel = MONTH_LABELS[MONTH_ABBRS.indexOf(selectedMonth)]
-
-  // ── Early redirect
-  if (!isLoaded) { navigate('/'); return null }
 
   // ── Export
   const handleExport = () => exportHighlightsReport({

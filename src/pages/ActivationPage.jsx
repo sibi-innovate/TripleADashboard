@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency } from '../utils/formatters'
 import Tag from '../components/Tag'
@@ -53,7 +53,6 @@ function getBucket(days) {
 
 export default function ActivationPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
   const [areaFilter, setAreaFilter] = useState('All')
 
   const allAgents = useMemo(() =>
@@ -98,8 +97,6 @@ export default function ActivationPage() {
       .map(r => ({ ...r, rate: r.recruits > 0 ? Math.round((r.activatedCount / r.recruits) * 100) : 0 }))
       .sort((a, b) => b.recruits - a.recruits)
   }, [newRecruits])
-
-  if (!isLoaded) { navigate('/'); return null }
 
   return (
     <div className="bg-aia-gray min-h-screen">

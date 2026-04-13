@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import KpiCard from '../components/KpiCard'
 import { formatCurrency, formatNumber } from '../utils/formatters'
@@ -106,7 +106,6 @@ function HighlightTable({ title, rows, valueKey, valueLabel, formatFn }) {
 
 export default function LeaderboardPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
 
   const [subTab,          setSubTab]          = useState('Advisors')
   const [selectedMonth,   setSelectedMonth]   = useState(MONTH_ABBRS[new Date().getMonth()])
@@ -207,9 +206,6 @@ export default function LeaderboardPage() {
                (a[key === 'fyc' ? 'totalFyc' : key === 'anp' ? 'totalAnp' : key === 'fyp' ? 'totalFyp' : 'totalCases'])
       })
   }, [monthData, leaderSort, selectedMonth])
-
-  // ── Early return after all hooks
-  if (!isLoaded) { navigate('/'); return null }
 
   // ── KPIs for selected month
   const totalManpower  = filtered.reduce((s, a) => s + (a.m.manpower ||0), 0)

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 
@@ -49,7 +48,6 @@ function getAchCell(actual, target, isFuture) {
 
 export default function TargetsPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
   const currentMonthIdx = new Date().getMonth()
 
   const stored = loadTargets()
@@ -122,8 +120,6 @@ export default function TargetsPage() {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
-
-  if (!isLoaded) { navigate('/'); return null }
 
   const fypActuals  = monthlyActuals.map(m => m.fyp)
   const caseActuals = monthlyActuals.map(m => m.cases)

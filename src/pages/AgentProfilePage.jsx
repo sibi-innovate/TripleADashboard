@@ -198,8 +198,6 @@ export default function AgentProfilePage() {
 
   const agent = data?.agents?.find(a => a.code === code)
 
-  if (!isLoaded) { navigate('/'); return null }
-
   if (!agent) {
     return (
       <div className="min-h-screen bg-aia-gray flex items-center justify-center">

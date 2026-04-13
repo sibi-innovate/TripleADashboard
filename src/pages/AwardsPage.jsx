@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 import Tag from '../components/Tag'
@@ -136,7 +135,6 @@ function ImaTierLadder({ agencyFyp }) {
 
 export default function AwardsPage() {
   const { data, isLoaded } = useData()
-  const navigate = useNavigate()
   const [mdrtView, setMdrtView] = useState('Qualifiers') // 'Qualifiers' | 'On Pace' | 'All'
 
   const currentMonthFraction = (new Date().getMonth() + 1) / 12  // March 2026 = 3/12
@@ -185,8 +183,6 @@ export default function AwardsPage() {
   // Counts for toggle labels
   const qualifierCount = useMemo(() => agents.filter(a => a.ytdFyp >= MDRT_TARGET).length, [agents])
   const onPaceCount    = useMemo(() => agents.filter(a => a.ytdFyp >= onPaceThreshold && a.ytdFyp < MDRT_TARGET).length, [agents, onPaceThreshold])
-
-  if (!isLoaded) { navigate('/'); return null }
 
   // IMA derived values
   const imaCurrentTier = getCurrentTier(agencyYtdFyp, GAMA_IMA_TIERS)

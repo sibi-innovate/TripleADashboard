@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency } from '../utils/formatters'
 import { exportAgents } from '../utils/exportExcel'
@@ -406,7 +406,10 @@ export default function AgentsPage() {
 
                         {/* Name */}
                         <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">
-                          {agent.name ?? '—'}
+                          {agent.code
+                            ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>
+                            : (agent.name ?? '—')
+                          }
                         </td>
 
                         {/* Code */}

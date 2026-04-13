@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import KpiCard from '../components/KpiCard'
 import { formatCurrency, formatNumber } from '../utils/formatters'
@@ -77,7 +77,12 @@ function HighlightTable({ title, rows, valueKey, valueLabel, formatFn }) {
                   {idx < 3 ? MEDAL[idx] : <span className="text-sm text-gray-400">{idx + 1}</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <div className="font-semibold text-aia-darkGray text-xs leading-tight">{a.name}</div>
+                  <div className="font-semibold text-aia-darkGray text-xs leading-tight">
+                    {a.code
+                      ? <Link to={`/agent/${a.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{a.name}</Link>
+                      : a.name
+                    }
+                  </div>
                   <div className="text-[10px] text-gray-400 mt-0.5">{a.segment} · {a.unitName}</div>
                 </td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums text-aia-darkGray text-xs">
@@ -457,7 +462,12 @@ export default function LeaderboardPage() {
                               {isTop3 ? <span className="text-lg leading-none">{MEDAL[idx]}</span> : <span className="text-gray-500">{rank}</span>}
                             </td>
                             <td className="px-4 py-2.5">
-                              <div className="font-semibold text-aia-darkGray leading-snug text-sm">{agent.name ?? '—'}</div>
+                              <div className="font-semibold text-aia-darkGray leading-snug text-sm">
+                                {agent.code
+                                  ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>
+                                  : (agent.name ?? '—')
+                                }
+                              </div>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 {agent.agentYear != null && (
                                   <Tag variant={SEGMENT_TAG_VARIANT[agent.segment] ?? 'default'}>
@@ -561,7 +571,12 @@ export default function LeaderboardPage() {
                       <tbody>
                         {newRecruits.map((a, idx) => (
                           <tr key={a.code ?? idx} className="even:bg-gray-50">
-                            <td className="px-4 py-2.5 font-semibold text-aia-darkGray">{a.name}</td>
+                            <td className="px-4 py-2.5 font-semibold text-aia-darkGray">
+                            {a.code
+                              ? <Link to={`/agent/${a.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{a.name}</Link>
+                              : a.name
+                            }
+                          </td>
                             <td className="px-4 py-2.5">
                               <Tag variant={a.segment === 'Rookie' ? 'rookie' : 'seasoned'}>
                                 {a.segment}

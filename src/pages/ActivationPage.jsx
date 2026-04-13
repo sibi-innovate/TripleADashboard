@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency } from '../utils/formatters'
 import Tag from '../components/Tag'
@@ -207,7 +207,12 @@ export default function ActivationPage() {
                       return (
                         <tr key={a.code ?? idx} className="even:bg-gray-50">
                           <td className="px-3 py-2.5">
-                            <div className="font-semibold text-aia-darkGray text-xs">{a.name}</div>
+                            <div className="font-semibold text-aia-darkGray text-xs">
+                              {a.code
+                                ? <Link to={`/agent/${a.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{a.name}</Link>
+                                : a.name
+                              }
+                            </div>
                             <div className="text-xs text-gray-400 leading-tight">{a.code}</div>
                           </td>
                           <td className="px-3 py-2.5 text-xs text-gray-600">{areaShort}</td>

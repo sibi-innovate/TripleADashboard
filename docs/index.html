@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amora Agency Dashboard</title>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/recharts@2.5.0/umd/Recharts.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --red: #D31145;
+  --red-80: #DC3F69;
+  --red-60: #E56E8D;
+  --red-40: #ED9DB2;
+  --red-20: #F6CCD9;
+  --charcoal: #333D47;
+  --char-60: #848A90;
+  --char-20: #D6D8DA;
+  --offwhite: #FAFAFA;
+  --green: #88B943;
+  --blue: #1F78AD;
+  --orange: #FF754D;
+  --yellow: #F7C926;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Open Sans', system-ui, sans-serif; background: var(--offwhite); color: var(--charcoal); -webkit-font-smoothing: antialiased; }
+::selection { background: var(--red-20); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--char-20); border-radius: 3px; }
+
+@keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes scaleIn { from { opacity:0; transform:scale(.95); } to { opacity:1; transform:scale(1); } }
+.anim-fiu { animation: fadeInUp .5s ease-out both; }
+.anim-fi { animation: fadeIn .4s ease-out both; }
+.anim-si { animation: scaleIn .4s ease-out both; }
+.d1{animation-delay:.05s}.d2{animation-delay:.1s}.d3{animation-delay:.15s}.d4{animation-delay:.2s}.d5{animation-delay:.25s}.d6{animation-delay:.3s}.d7{animation-delay:.35s}.d8{animation-delay:.4s}
+
+/* Layout */
+.sidebar { position:fixed; top:0; left:0; width:240px; height:100vh; background:var(--charcoal); color:white; display:flex; flex-direction:column; z-index:50; transition:transform .3s; }
+.sidebar.collapsed { transform:translateX(-240px); }
+.main { margin-left:240px; min-height:100vh; transition:margin-left .3s; }
+.main.full { margin-left:0; }
+
+/* Sidebar */
+.sb-header { padding:20px 16px; border-bottom:1px solid rgba(255,255,255,.1); }
+.sb-logo { display:flex; align-items:center; gap:12px; }
+.sb-logo-box { width:40px; height:40px; background:white; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+.sb-logo-text { color:var(--red); font-weight:800; font-size:16px; }
+.sb-title { font-weight:700; font-size:14px; line-height:1.2; }
+.sb-sub { font-size:10px; color:rgba(255,255,255,.5); margin-top:2px; }
+.sb-nav { flex:1; padding:12px 8px; overflow-y:auto; }
+.sb-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; margin-bottom:2px; }
+.sb-item:hover { background:rgba(255,255,255,.08); color:white; }
+.sb-item.active { background:var(--red); color:white; font-weight:700; }
+.sb-item svg { width:18px; height:18px; flex-shrink:0; }
+.sb-section { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:rgba(255,255,255,.3); padding:16px 12px 6px; }
+
+/* Top bar */
+.topbar { background:white; border-bottom:1px solid #eee; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:40; }
+.topbar-title { font-weight:700; font-size:18px; color:var(--charcoal); }
+.topbar-sub { font-size:12px; color:var(--char-60); }
+
+/* Cards */
+.card { background:white; border-radius:16px; box-shadow:0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04); overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid #f0f0f0; display:flex; align-items:center; justify-content:space-between; }
+.card-title { font-weight:700; font-size:14px; color:var(--charcoal); }
+.card-body { padding:20px; }
+
+/* KPI Cards */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; }
+.kpi-card { background:white; border-radius:14px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04); border-left:4px solid var(--red); position:relative; overflow:hidden; }
+.kpi-card.green { border-left-color:var(--green); }
+.kpi-card.blue { border-left-color:var(--blue); }
+.kpi-card.orange { border-left-color:var(--orange); }
+.kpi-card.yellow { border-left-color:var(--yellow); }
+.kpi-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--char-60); margin-bottom:6px; }
+.kpi-value { font-size:28px; font-weight:800; color:var(--charcoal); line-height:1.1; font-variant-numeric:tabular-nums; }
+.kpi-sub { font-size:11px; color:var(--char-60); margin-top:4px; }
+.kpi-icon { position:absolute; top:16px; right:16px; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+
+/* Tables */
+.tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th { text-align:left; padding:10px 12px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--char-60); border-bottom:2px solid #f0f0f0; position:sticky; top:0; background:white; }
+.tbl td { padding:10px 12px; border-bottom:1px solid #f5f5f5; }
+.tbl tr:hover td { background:#fafafa; }
+.tbl .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.tbl .name { font-weight:600; color:var(--charcoal); }
+
+/* Badges */
+.badge { display:inline-flex; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:700; }
+.badge-green { background:#e8f5e9; color:#2e7d32; }
+.badge-red { background:#fce4ec; color:#c62828; }
+.badge-yellow { background:#fff9c4; color:#f57f17; }
+.badge-blue { background:#e3f2fd; color:#1565c0; }
+.badge-gray { background:#f5f5f5; color:#757575; }
+
+/* Upload zone */
+.upload-zone { border:2px dashed var(--char-20); border-radius:16px; padding:48px 24px; text-align:center; cursor:pointer; transition:all .2s; }
+.upload-zone:hover { border-color:var(--red-60); background:rgba(211,17,69,.02); }
+.upload-zone.dragging { border-color:var(--red); background:rgba(211,17,69,.05); transform:scale(1.01); }
+
+/* Tabs */
+.tabs { display:flex; gap:4px; background:#f5f5f5; padding:4px; border-radius:12px; }
+.tab { padding:8px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition:all .15s; color:var(--char-60); }
+.tab:hover { color:var(--charcoal); }
+.tab.active { background:white; color:var(--charcoal); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+
+/* Search */
+.search-box { display:flex; align-items:center; background:#f5f5f5; border-radius:10px; padding:0 12px; }
+.search-box input { border:none; background:transparent; padding:10px 8px; font-size:13px; outline:none; width:200px; font-family:inherit; }
+.search-box svg { width:16px; height:16px; color:var(--char-60); }
+
+/* Responsive */
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-240px); }
+  .main { margin-left:0 !important; }
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+}
+
+/* Page content */
+.page { padding:24px; max-width:1400px; }
+.page-grid { display:grid; gap:20px; }
+
+/* Mountains decoration */
+.mountains-svg { position:absolute; bottom:0; left:0; width:100%; height:60px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="load-error" style="display:none;position:fixed;inset:0;z-index:9999;background:white;padding:60px 24px;text-align:center;font-family:'Open Sans',system-ui,sans-serif;">
+  <div style="max-width:500px;margin:0 auto;">
+    <div style="font-size:48px;margin-bottom:16px;">&#9888;&#65039;</div>
+    <h2 style="font-size:20px;font-weight:700;color:#333D47;margin-bottom:12px;">Unable to load dashboard libraries</h2>
+    <p style="font-size:14px;color:#848A90;line-height:1.7;margin-bottom:20px;">
+      Safari may block external scripts when opening local HTML files.
+      Please try one of these solutions:
+    </p>
+    <div style="text-align:left;background:#f9f9f9;padding:20px;border-radius:12px;font-size:13px;line-height:2;color:#333D47;">
+      <b>Option 1:</b> Open in Google Chrome instead (recommended)<br/>
+      <b>Option 2:</b> In Safari → Settings → Advanced → check "Disable local file restrictions"<br/>
+      <b>Option 3:</b> Run a local server: open Terminal, <code style="background:#eee;padding:2px 6px;border-radius:4px;">cd</code> to the folder, then <code style="background:#eee;padding:2px 6px;border-radius:4px;">python3 -m http.server 8000</code> and visit <code style="background:#eee;padding:2px 6px;border-radius:4px;">localhost:8000</code>
+    </div>
+  </div>
+</div>
+<script>
+// Check if all required libraries loaded
+window.addEventListener('DOMContentLoaded', function() {
+  if (typeof React === 'undefined' || typeof Recharts === 'undefined' || typeof XLSX === 'undefined' || typeof Babel === 'undefined') {
+    document.getElementById('load-error').style.display = 'block';
+    document.getElementById('root').style.display = 'none';
+  }
+});
+</script>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = Recharts;
+
+// ─── Constants ────────────────────────────────────────────────────
+const COLORS = { red:'#D31145', red80:'#DC3F69', red60:'#E56E8D', red40:'#ED9DB2', red20:'#F6CCD9', charcoal:'#333D47', char60:'#848A90', green:'#88B943', blue:'#1F78AD', orange:'#FF754D', yellow:'#F7C926' };
+const CHART_COLORS = ['#D31145','#1F78AD','#88B943','#FF754D','#F7C926','#DC3F69','#E56E8D'];
+const YEARS = [2022,2023,2024,2025];
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+// ─── Format helpers ───────────────────────────────────────────────
+const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('en-PH', {maximumFractionDigits:0});
+const fmtK = (n) => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : fmt(n);
+const fmtPct = (n) => n == null ? '—' : (n*100).toFixed(1)+'%';
+const parseName = (raw) => {
+  if (!raw) return '';
+  const m = String(raw).match(/^[A-Z]\/([^/]+)\/([^/]+?)(?:\/([^/@]*))?@?$/i);
+  if (m) {
+    const tc = s => s.toLowerCase().split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+    return [tc(m[2].trim()), m[3]?m[3].trim().toUpperCase():'', tc(m[1].trim())].filter(Boolean).join(' ');
+  }
+  return raw.replace(/^[A-Z]\//i,'').replace(/@$/,'').trim();
+};
+const normCode = (c) => { try { return String(parseInt(String(c).trim())); } catch { return String(c).trim(); } };
+
+// ─── Excel Parser ─────────────────────────────────────────────────
+function findHeaderRow(ws, marker) {
+  // Scan rows 0-10 to find the row containing the marker column name (e.g. 'Agent Code')
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let r = 0; r <= Math.min(range.e.r, 10); r++) {
+    for (let c = range.s.c; c <= Math.min(range.e.c, 20); c++) {
+      const cell = ws[XLSX.utils.encode_cell({r, c})];
+      if (cell && String(cell.v).trim() === marker) return r;
+    }
+  }
+  return -1;
+}
+
+function parseMasterFile(ab) {
+  const wb = XLSX.read(new Uint8Array(ab), {type:'array'});
+
+  // Parse Agent Master List
+  const masterSheet = wb.Sheets['Agent Master List'];
+  if (!masterSheet) throw new Error('No "Agent Master List" sheet found');
+
+  // Auto-detect header row by finding 'Agent Code'
+  const headerRow = findHeaderRow(masterSheet, 'Agent Code');
+  if (headerRow < 0) throw new Error('Could not find "Agent Code" header in Agent Master List');
+
+  const masterRows = XLSX.utils.sheet_to_json(masterSheet, {range: headerRow, defval:''});
+
+  const agents = masterRows.filter(r => r['Agent Code'] && r['Agent Code'] !== '').map(r => ({
+    code: String(r['Agent Code']||''),
+    name: String(r['Agent Name']||''),
+    displayName: parseName(String(r['Agent Name']||'')),
+    birthdate: r['Birthdate']||'',
+    age: r['Age']||'',
+    paDate: r['PA Date']||'',
+    agentClass: r['Agent Class']||'',
+    umName: String(r['Unit Manager']||''),
+    umDisplayName: parseName(String(r['Unit Manager']||'')),
+    recruiterCode: String(r['Recruiter Code']||''),
+    recruiterName: parseName(String(r['Recruiter Name']||'')),
+    firstYear: r['First Yr']||'',
+    latestYear: r['Latest Yr']||'',
+    status2022: r['Status 2022']||'—',
+    status2023: r['Status 2023']||'—',
+    status2024: r['Status 2024']||'—',
+    status2025: r['Status 2025']||'—',
+    currentStatus: r['Current Status']||'',
+    mp2022: r['MP 2022'], mp2023: r['MP 2023'], mp2024: r['MP 2024'], mp2025: r['MP 2025'],
+    tier2022: r['Tier 2022']||'—', tier2023: r['Tier 2023']||'—', tier2024: r['Tier 2024']||'—', tier2025: r['Tier 2025']||'—',
+    anp2022: r['ANP 2022']||0, anp2023: r['ANP 2023']||0, anp2024: r['ANP 2024']||0, anp2025: r['ANP 2025']||0,
+    fyp2022: r['FYP 2022']||0, fyp2023: r['FYP 2023']||0, fyp2024: r['FYP 2024']||0, fyp2025: r['FYP 2025']||0,
+    fyc2022: r['FYC 2022']||0, fyc2023: r['FYC 2023']||0, fyc2024: r['FYC 2024']||0, fyc2025: r['FYC 2025']||0,
+    cases2022: r['Cases 2022']||0, cases2023: r['Cases 2023']||0, cases2024: r['Cases 2024']||0, cases2025: r['Cases 2025']||0,
+    avgAnp: r['Avg Annual ANP']||0,
+    totalAnp: r['Total Career ANP']||0,
+    yrsActive: r['Yrs Active']||0,
+    prodYrs: r['Producing Yrs']||0,
+    yoy2223: r['YoY 22→23'], yoy2324: r['YoY 23→24'], yoy2425: r['YoY 24→25'],
+    reRecruit: r['Re-Recruit Flag']||'',
+  }));
+
+  // Parse Dashboard sheet
+  const dashSheet = wb.Sheets['Dashboard'];
+  let dashMetrics = null;
+  if (dashSheet) {
+    // Auto-detect header row for Dashboard too
+    const dashHdrRow = findHeaderRow(dashSheet, 'Metric');
+    const rng = dashHdrRow >= 0 ? dashHdrRow : 4;
+    const dashRows = XLSX.utils.sheet_to_json(dashSheet, {range: rng, defval:''});
+    dashMetrics = {};
+    dashRows.forEach(r => {
+      const metric = r['Metric'];
+      if (metric) dashMetrics[metric] = { '2022': r['2022']||r[2022], '2023': r['2023']||r[2023], '2024': r['2024']||r[2024], '2025': r['2025']||r[2025] };
+    });
+  }
+
+  return { agents, dashMetrics };
+}
+
+// ─── Icons (inline SVG) ───────────────────────────────────────────
+const Icon = ({name, size=18}) => {
+  const icons = {
+    overview: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>,
+    agents: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>,
+    units: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>,
+    chart: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>,
+    award: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>,
+    upload: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>,
+    recruit: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>,
+    search: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>,
+    download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>,
+    trend: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>,
+  };
+  return <svg width={size} height={size} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icons[name]}</svg>;
+};
+
+// ─── Sidebar ──────────────────────────────────────────────────────
+function Sidebar({page, setPage}) {
+  const items = [
+    {id:'overview', label:'Overview', icon:'overview'},
+    {id:'trends', label:'Year-over-Year', icon:'trend'},
+    {id:'agents', label:'Agent Roster', icon:'agents'},
+    {id:'units', label:'Unit Breakdown', icon:'units'},
+    {id:'leaderboard', label:'Leaderboard', icon:'chart'},
+    {id:'rerecruit', label:'Re-Recruitment', icon:'recruit'},
+    {id:'upload', label:'Upload DPR', icon:'upload'},
+  ];
+  return (
+    <div className="sidebar">
+      <div className="sb-header">
+        <div className="sb-logo">
+          <div className="sb-logo-box"><span className="sb-logo-text">AIA</span></div>
+          <div>
+            <div className="sb-title">Amora Agency</div>
+            <div className="sb-sub">Performance Dashboard</div>
+          </div>
+        </div>
+      </div>
+      <nav className="sb-nav">
+        <div className="sb-section">Analytics</div>
+        {items.slice(0,2).map(i => (
+          <div key={i.id} className={`sb-item ${page===i.id?'active':''}`} onClick={()=>setPage(i.id)}>
+            <Icon name={i.icon}/>{i.label}
+          </div>
+        ))}
+        <div className="sb-section">Agency</div>
+        {items.slice(2,6).map(i => (
+          <div key={i.id} className={`sb-item ${page===i.id?'active':''}`} onClick={()=>setPage(i.id)}>
+            <Icon name={i.icon}/>{i.label}
+          </div>
+        ))}
+        <div className="sb-section">Data</div>
+        {items.slice(6).map(i => (
+          <div key={i.id} className={`sb-item ${page===i.id?'active':''}`} onClick={()=>setPage(i.id)}>
+            <Icon name={i.icon}/>{i.label}
+          </div>
+        ))}
+      </nav>
+      <div style={{padding:'12px 16px', borderTop:'1px solid rgba(255,255,255,.1)', fontSize:10, color:'rgba(255,255,255,.3)'}}>
+        Davao-Amora Agency &middot; v2.0
+      </div>
+    </div>
+  );
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────
+function KpiCard({label, value, sub, color='red', delay=0}) {
+  return (
+    <div className={`kpi-card ${color} anim-fiu d${delay}`}>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value">{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+// ─── Overview Page ────────────────────────────────────────────────
+function OverviewPage({data}) {
+  const {agents, dashMetrics} = data;
+  const active = agents.filter(a => a.currentStatus === 'Active');
+  const inactive = agents.filter(a => a.currentStatus !== 'Active');
+  const producers2025 = agents.filter(a => Number(a.anp2025) > 0);
+  const totalAnp2025 = agents.reduce((s,a) => s + Number(a.anp2025||0), 0);
+  
+  // Yearly trends from dashboard metrics or computed
+  const yearlyData = YEARS.map(y => ({
+    year: String(y),
+    active: dashMetrics?.[`Active Licensed (MP=1)`]?.[String(y)] || agents.filter(a=>a[`mp${y}`]===1).length,
+    anp: dashMetrics?.['Total ANP YTD']?.[String(y)] || agents.reduce((s,a)=>s+Number(a[`anp${y}`]||0),0),
+    producers: dashMetrics?.['Producing Agents']?.[String(y)] || agents.filter(a=>Number(a[`anp${y}`]||0)>0).length,
+    cases: dashMetrics?.['Total Cases YTD']?.[String(y)] || agents.reduce((s,a)=>s+Number(a[`cases${y}`]||0),0),
+  }));
+  
+  // Tier distribution for latest year
+  const tierData = [
+    {name:'Rookie', value: agents.filter(a=>a.tier2025==='Rookie').length, color:COLORS.blue},
+    {name:'Sophomore', value: agents.filter(a=>a.tier2025==='Sophomore').length, color:COLORS.yellow},
+    {name:'Seasoned', value: agents.filter(a=>a.tier2025==='Seasoned').length, color:COLORS.green},
+  ].filter(d=>d.value>0);
+  
+  const statusData = [
+    {name:'Active', value: active.length, color:COLORS.green},
+    {name:'Inactive', value: inactive.length, color:COLORS.char60},
+  ];
+
+  return (
+    <div className="page">
+      <div className="kpi-grid" style={{marginBottom:24}}>
+        <KpiCard label="Total Agents (All Time)" value={agents.length} sub={`${active.length} active, ${inactive.length} inactive`} delay={1}/>
+        <KpiCard label="Total ANP 2025 (YTD)" value={fmtK(totalAnp2025)} sub="As of Nov 30, 2025" color="blue" delay={2}/>
+        <KpiCard label="Producing Agents 2025" value={producers2025.length} sub={`${active.length > 0 ? ((producers2025.length/active.length)*100).toFixed(0) : 0}% activity rate`} color="green" delay={3}/>
+        <KpiCard label="Avg ANP / Producer" value={fmtK(producers2025.length > 0 ? totalAnp2025/producers2025.length : 0)} color="orange" delay={4}/>
+      </div>
+      
+      <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:24}}>
+        <div className="card anim-fiu d5">
+          <div className="card-header"><span className="card-title">Agency ANP Trend (2022–2025)</span></div>
+          <div className="card-body">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={yearlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="year" fontSize={12}/>
+                <YAxis fontSize={11} tickFormatter={v=>fmtK(v)}/>
+                <Tooltip formatter={v=>fmt(v)} labelFormatter={l=>`Year ${l}`}/>
+                <Bar dataKey="anp" name="ANP YTD" fill={COLORS.red} radius={[6,6,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        
+        <div className="card anim-fiu d6">
+          <div className="card-header"><span className="card-title">Agent Status</span></div>
+          <div className="card-body" style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={statusData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" label={({name,value})=>`${name}: ${value}`} fontSize={11}>
+                  {statusData.map((d,i)=><Cell key={i} fill={d.color}/>)}
+                </Pie>
+                <Tooltip/>
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{display:'flex',gap:16,marginTop:8}}>
+              {tierData.map(t=>(
+                <div key={t.name} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+                  <div style={{width:10,height:10,borderRadius:3,background:t.color}}/>
+                  <span><b>{t.value}</b> {t.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
+        <div className="card anim-fiu d7">
+          <div className="card-header"><span className="card-title">Active Headcount Trend</span></div>
+          <div className="card-body">
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={yearlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="year" fontSize={12}/>
+                <YAxis fontSize={11}/>
+                <Tooltip/>
+                <Area type="monotone" dataKey="active" name="Active Agents" stroke={COLORS.blue} fill={COLORS.blue} fillOpacity={0.15}/>
+                <Area type="monotone" dataKey="producers" name="Producers" stroke={COLORS.green} fill={COLORS.green} fillOpacity={0.15}/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="card anim-fiu d8">
+          <div className="card-header"><span className="card-title">Cases YTD Trend</span></div>
+          <div className="card-body">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={yearlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="year" fontSize={12}/>
+                <YAxis fontSize={11}/>
+                <Tooltip/>
+                <Bar dataKey="cases" name="Cases" fill={COLORS.orange} radius={[6,6,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trends Page ──────────────────────────────────────────────────
+function TrendsPage({data}) {
+  const {agents} = data;
+  const yearlyByUM = useMemo(() => {
+    const umMap = {};
+    agents.forEach(a => {
+      const um = a.umDisplayName || 'Unknown';
+      if (!umMap[um]) umMap[um] = {};
+      YEARS.forEach(y => {
+        if (!umMap[um][y]) umMap[um][y] = {active:0, anp:0, producers:0};
+        if (a[`mp${y}`] === 1) { umMap[um][y].active++; }
+        const anp = Number(a[`anp${y}`]||0);
+        umMap[um][y].anp += anp;
+        if (anp > 0) umMap[um][y].producers++;
+      });
+    });
+    return Object.entries(umMap).map(([name,data]) => ({name, ...data})).sort((a,b) => (b[2025]?.anp||0) - (a[2025]?.anp||0));
+  }, [agents]);
+
+  return (
+    <div className="page">
+      <div className="card anim-fiu d1" style={{marginBottom:20}}>
+        <div className="card-header"><span className="card-title">Year-over-Year ANP by Unit Manager</span></div>
+        <div className="card-body" style={{overflowX:'auto'}}>
+          <table className="tbl">
+            <thead><tr>
+              <th>Unit Manager</th>
+              {YEARS.map(y => <th key={y} className="num">ANP {y}</th>)}
+              <th className="num">Active 2025</th>
+              <th className="num">Producers 2025</th>
+            </tr></thead>
+            <tbody>
+              {yearlyByUM.map(um => (
+                <tr key={um.name}>
+                  <td className="name">{um.name}</td>
+                  {YEARS.map(y => <td key={y} className="num">{fmtK(um[y]?.anp||0)}</td>)}
+                  <td className="num">{um[2025]?.active||0}</td>
+                  <td className="num">{um[2025]?.producers||0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div className="card anim-fiu d2">
+        <div className="card-header"><span className="card-title">Agency ANP Year-over-Year Comparison</span></div>
+        <div className="card-body">
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={YEARS.map(y=>({year:String(y), anp:agents.reduce((s,a)=>s+Number(a[`anp${y}`]||0),0), fyp:agents.reduce((s,a)=>s+Number(a[`fyp${y}`]||0),0)}))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+              <XAxis dataKey="year" fontSize={12}/>
+              <YAxis fontSize={11} tickFormatter={v=>fmtK(v)}/>
+              <Tooltip formatter={v=>fmt(v)}/>
+              <Legend/>
+              <Bar dataKey="anp" name="ANP" fill={COLORS.red} radius={[6,6,0,0]}/>
+              <Bar dataKey="fyp" name="FYP" fill={COLORS.blue} radius={[6,6,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Agents Page ──────────────────────────────────────────────────
+function AgentsPage({data}) {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('anp2025');
+  const [sortDir, setSortDir] = useState('desc');
+  
+  const filtered = useMemo(() => {
+    let list = data.agents;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(a => a.displayName.toLowerCase().includes(q) || a.code.includes(q) || a.umDisplayName.toLowerCase().includes(q));
+    }
+    if (statusFilter === 'active') list = list.filter(a => a.currentStatus === 'Active');
+    if (statusFilter === 'inactive') list = list.filter(a => a.currentStatus !== 'Active');
+    if (tierFilter !== 'all') list = list.filter(a => a.tier2025 === tierFilter);
+    
+    list = [...list].sort((a,b) => {
+      const av = Number(a[sortBy]||0), bv = Number(b[sortBy]||0);
+      return sortDir === 'desc' ? bv-av : av-bv;
+    });
+    return list;
+  }, [data.agents, search, statusFilter, tierFilter, sortBy, sortDir]);
+
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir(d => d==='desc'?'asc':'desc');
+    else { setSortBy(col); setSortDir('desc'); }
+  };
+
+  return (
+    <div className="page">
+      <div style={{display:'flex', gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
+        <div className="search-box">
+          <Icon name="search" size={16}/>
+          <input placeholder="Search agents..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <div className="tabs">
+          {[['all','All'],['active','Active'],['inactive','Inactive']].map(([v,l])=>(
+            <div key={v} className={`tab ${statusFilter===v?'active':''}`} onClick={()=>setStatusFilter(v)}>{l}</div>
+          ))}
+        </div>
+        <div className="tabs">
+          {[['all','All Tiers'],['Rookie','Rookies'],['Sophomore','Sophomores'],['Seasoned','Seasoned']].map(([v,l])=>(
+            <div key={v} className={`tab ${tierFilter===v?'active':''}`} onClick={()=>setTierFilter(v)}>{l}</div>
+          ))}
+        </div>
+        <span style={{fontSize:12, color:COLORS.char60}}>{filtered.length} agents</span>
+      </div>
+      
+      <div className="card">
+        <div className="card-body" style={{padding:0, overflowX:'auto', maxHeight:'70vh', overflowY:'auto'}}>
+          <table className="tbl">
+            <thead><tr>
+              <th>#</th>
+              <th>Agent</th>
+              <th>Unit Manager</th>
+              <th>Class</th>
+              <th>Tier 2025</th>
+              <th>Status</th>
+              <th className="num" style={{cursor:'pointer'}} onClick={()=>toggleSort('anp2025')}>ANP 2025 {sortBy==='anp2025'?(sortDir==='desc'?'↓':'↑'):''}</th>
+              <th className="num" style={{cursor:'pointer'}} onClick={()=>toggleSort('anp2024')}>ANP 2024</th>
+              <th className="num" style={{cursor:'pointer'}} onClick={()=>toggleSort('totalAnp')}>Career ANP</th>
+              <th className="num">Cases 2025</th>
+              <th>Yrs Active</th>
+            </tr></thead>
+            <tbody>
+              {filtered.slice(0,200).map((a,i) => (
+                <tr key={a.code}>
+                  <td style={{color:COLORS.char60}}>{i+1}</td>
+                  <td className="name">{a.displayName}<br/><span style={{fontSize:10,color:COLORS.char60}}>{a.code}</span></td>
+                  <td>{a.umDisplayName}</td>
+                  <td><span className="badge badge-gray">{a.agentClass}</span></td>
+                  <td><span className={`badge ${a.tier2025==='Rookie'?'badge-blue':a.tier2025==='Sophomore'?'badge-yellow':'badge-green'}`}>{a.tier2025}</span></td>
+                  <td><span className={`badge ${a.currentStatus==='Active'?'badge-green':'badge-red'}`}>{a.currentStatus==='Active'?'Active':'Inactive'}</span></td>
+                  <td className="num">{fmtK(a.anp2025)}</td>
+                  <td className="num">{fmtK(a.anp2024)}</td>
+                  <td className="num" style={{fontWeight:700}}>{fmtK(a.totalAnp)}</td>
+                  <td className="num">{Number(a.cases2025)||'—'}</td>
+                  <td style={{textAlign:'center'}}>{a.yrsActive}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Units Page ───────────────────────────────────────────────────
+function UnitsPage({data}) {
+  const units = useMemo(() => {
+    const map = {};
+    data.agents.forEach(a => {
+      const um = a.umDisplayName || 'Unassigned';
+      if (!map[um]) map[um] = {name:um, agents:[]};
+      map[um].agents.push(a);
+    });
+    return Object.values(map).map(u => {
+      const active = u.agents.filter(a=>a.currentStatus==='Active');
+      const anp25 = u.agents.reduce((s,a)=>s+Number(a.anp2025||0),0);
+      const producers = u.agents.filter(a=>Number(a.anp2025||0)>0);
+      return {...u, activeCount:active.length, totalCount:u.agents.length, anp2025:anp25, producers:producers.length, actRate:active.length>0?producers.length/active.length:0};
+    }).sort((a,b)=>b.anp2025-a.anp2025);
+  }, [data.agents]);
+
+  return (
+    <div className="page">
+      <div className="kpi-grid" style={{marginBottom:24}}>
+        <KpiCard label="Total Units" value={units.length} delay={1}/>
+        <KpiCard label="Highest ANP Unit" value={units[0]?.name||'—'} sub={fmtK(units[0]?.anp2025)} color="green" delay={2}/>
+      </div>
+      <div className="card anim-fiu d3">
+        <div className="card-body" style={{padding:0, overflowX:'auto'}}>
+          <table className="tbl">
+            <thead><tr>
+              <th>Unit Manager</th>
+              <th className="num">Active</th>
+              <th className="num">Total</th>
+              <th className="num">Producers</th>
+              <th className="num">Activity Rate</th>
+              <th className="num">ANP 2025</th>
+              <th className="num">ANP 2024</th>
+              <th className="num">ANP 2023</th>
+            </tr></thead>
+            <tbody>
+              {units.map(u => {
+                const anp24 = u.agents.reduce((s,a)=>s+Number(a.anp2024||0),0);
+                const anp23 = u.agents.reduce((s,a)=>s+Number(a.anp2023||0),0);
+                return (
+                  <tr key={u.name}>
+                    <td className="name">{u.name}</td>
+                    <td className="num">{u.activeCount}</td>
+                    <td className="num" style={{color:COLORS.char60}}>{u.totalCount}</td>
+                    <td className="num">{u.producers}</td>
+                    <td className="num"><span className={`badge ${u.actRate>=.5?'badge-green':u.actRate>=.3?'badge-yellow':'badge-red'}`}>{(u.actRate*100).toFixed(0)}%</span></td>
+                    <td className="num" style={{fontWeight:700}}>{fmtK(u.anp2025)}</td>
+                    <td className="num">{fmtK(anp24)}</td>
+                    <td className="num">{fmtK(anp23)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Leaderboard Page ─────────────────────────────────────────────
+function LeaderboardPage({data}) {
+  const [year, setYear] = useState(2025);
+  const top = useMemo(() => {
+    return [...data.agents]
+      .filter(a => Number(a[`anp${year}`]||0) > 0)
+      .sort((a,b) => Number(b[`anp${year}`]||0) - Number(a[`anp${year}`]||0))
+      .slice(0, 30);
+  }, [data.agents, year]);
+  
+  const maxAnp = top[0] ? Number(top[0][`anp${year}`]) : 1;
+
+  return (
+    <div className="page">
+      <div style={{display:'flex',gap:8,marginBottom:20}}>
+        <div className="tabs">
+          {YEARS.map(y=><div key={y} className={`tab ${year===y?'active':''}`} onClick={()=>setYear(y)}>{y}</div>)}
+        </div>
+      </div>
+      <div className="card anim-fiu d1">
+        <div className="card-header"><span className="card-title">Top 30 Producers by ANP — {year}</span></div>
+        <div className="card-body" style={{padding:0}}>
+          <table className="tbl">
+            <thead><tr><th style={{width:40}}>#</th><th>Agent</th><th>Unit</th><th>Tier</th><th className="num">ANP {year}</th><th style={{width:'30%'}}></th></tr></thead>
+            <tbody>
+              {top.map((a,i) => {
+                const anp = Number(a[`anp${year}`]);
+                const pct = (anp/maxAnp)*100;
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+                return (
+                  <tr key={a.code}>
+                    <td style={{fontWeight:700,fontSize:14}}>{medal||i+1}</td>
+                    <td className="name">{a.displayName}</td>
+                    <td>{a.umDisplayName}</td>
+                    <td><span className={`badge ${a[`tier${year}`]==='Rookie'?'badge-blue':'badge-green'}`}>{a[`tier${year}`]}</span></td>
+                    <td className="num" style={{fontWeight:800}}>{fmtK(anp)}</td>
+                    <td><div style={{background:'#f5f5f5',borderRadius:4,height:20,position:'relative'}}>
+                      <div style={{background:i<3?COLORS.red:COLORS.red40,borderRadius:4,height:'100%',width:`${pct}%`,transition:'width .5s'}}/>
+                    </div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Re-Recruitment Page ──────────────────────────────────────────
+function ReRecruitPage({data}) {
+  const candidates = useMemo(() => {
+    return data.agents.filter(a => a.reRecruit === 'YES')
+      .sort((a,b) => Number(b.totalAnp||0) - Number(a.totalAnp||0));
+  }, [data.agents]);
+
+  return (
+    <div className="page">
+      <div className="kpi-grid" style={{marginBottom:24}}>
+        <KpiCard label="Re-Recruitment Candidates" value={candidates.length} sub="Formerly active agents with production history" color="orange" delay={1}/>
+        <KpiCard label="Total Career ANP (Pool)" value={fmtK(candidates.reduce((s,a)=>s+Number(a.totalAnp||0),0))} sub="Combined historical production" color="yellow" delay={2}/>
+      </div>
+      <div className="card anim-fiu d3">
+        <div className="card-header"><span className="card-title">Inactive Agents with Production History</span><span style={{fontSize:11,color:COLORS.char60}}>Sorted by career ANP</span></div>
+        <div className="card-body" style={{padding:0, overflowX:'auto', maxHeight:'60vh', overflowY:'auto'}}>
+          <table className="tbl">
+            <thead><tr><th>#</th><th>Agent</th><th>Last Unit</th><th>Last Status</th><th>Years Active</th><th className="num">Career ANP</th><th className="num">Best Year ANP</th><th>Recruiter</th></tr></thead>
+            <tbody>
+              {candidates.map((a,i) => {
+                const bestAnp = Math.max(Number(a.anp2022||0),Number(a.anp2023||0),Number(a.anp2024||0),Number(a.anp2025||0));
+                return (
+                  <tr key={a.code}>
+                    <td>{i+1}</td>
+                    <td className="name">{a.displayName}<br/><span style={{fontSize:10,color:COLORS.char60}}>{a.code}</span></td>
+                    <td>{a.umDisplayName}</td>
+                    <td><span className="badge badge-red">{a.currentStatus}</span></td>
+                    <td style={{textAlign:'center'}}>{a.yrsActive}</td>
+                    <td className="num" style={{fontWeight:700}}>{fmtK(a.totalAnp)}</td>
+                    <td className="num">{fmtK(bestAnp)}</td>
+                    <td>{a.recruiterName||'—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DPR Parser & Merge Logic ────────────────────────────────────
+const STAT_MAP = {'00':'Active','0':'Active',0:'Active','54':'Delisted',54:'Delisted','51':'Suspended',51:'Suspended','52':'Terminated',52:'Terminated','53':'Expired',53:'Expired'};
+const TIER_MAP = {1:'Rookie','1':'Rookie',2:'Sophomore','2':'Sophomore',3:'Seasoned','3':'Seasoned'};
+
+function parseDprFile(ab) {
+  const wb = XLSX.read(new Uint8Array(ab), {type:'array'});
+  const sheetName = wb.SheetNames.find(n => n.toUpperCase() === 'AGENT') || wb.SheetNames.find(n => n.toUpperCase().includes('AGENT'));
+  if (!sheetName) throw new Error('No AGENT sheet found in this DPR file.');
+
+  const ws = wb.Sheets[sheetName];
+
+  // Auto-detect header row by finding 'AGENT_CODE' column
+  const headerRow = findHeaderRow(ws, 'AGENT_CODE');
+  if (headerRow < 0) throw new Error('Could not find "AGENT_CODE" header in AGENT sheet. Is this a valid AIA DPR file?');
+
+  // Read using the detected header row — SheetJS uses it as column names
+  const dataRows = XLSX.utils.sheet_to_json(ws, {range: headerRow, defval:''});
+
+  // Filter for DAVAO-AMORA AGENCY
+  const amoraRows = dataRows.filter(r => {
+    const agency = String(r['AGENCY_NAME'] || r['AGENCY NAME'] || '').toUpperCase();
+    return agency.includes('DAVAO-AMORA');
+  });
+
+  const rows = amoraRows.length > 0 ? amoraRows : dataRows;
+  if (rows.length === 0) throw new Error('No agent data found in the DPR file.');
+
+  // Detect which year this DPR is for + which months have data
+  const currentYear = new Date().getFullYear();
+  let dprYear = null;
+  const monthsWithData = new Set();
+
+  // Check ANP columns to detect year and months
+  for (let yr = 2020; yr <= currentYear + 1; yr++) {
+    for (let m = 0; m < 12; m++) {
+      const key = `ANP_${MONTHS[m]}${yr}`;
+      const hasData = rows.some(r => {
+        const v = Number(r[key] || 0);
+        return v > 0;
+      });
+      if (hasData) {
+        dprYear = yr;
+        monthsWithData.add(MONTHS[m]);
+      }
+    }
+  }
+
+  if (!dprYear) {
+    // Fallback: check for MTD columns
+    const anpMtd = rows.reduce((s,r) => s + Number(r['ANP_MTD'] || r['MTD'] || 0), 0);
+    if (anpMtd > 0) dprYear = currentYear;
+  }
+
+  if (!dprYear) throw new Error('Could not determine the report year from this DPR file.');
+
+  // Parse each agent row
+  const agents = rows.map(r => {
+    const get = k => r[k];
+    const getN = k => { const v = Number(r[k]); return isNaN(v) ? 0 : v; };
+
+    const code = normCode(String(get('AGENT_CODE') || get('AGT CODE') || ''));
+    const name = String(get('AGENT_NAME') || get('AGENT NAME') || '');
+    const umName = String(get('LEADER_UM_NAME') || get('UM NAME') || '');
+    const mp = Number(get('ManpowerCnt')) === 1;
+    const statRaw = String(get('AGENT_STAT') || '');
+    const status = STAT_MAP[statRaw] || statRaw || 'Unknown';
+    const agentYear = get('AGENT_YEAR') || get('AGTYR');
+    const tier = TIER_MAP[agentYear] || (Number(agentYear) >= 3 ? 'Seasoned' : 'Unknown');
+
+    // Monthly data
+    const monthly = {};
+    for (let m = 0; m < 12; m++) {
+      const mon = MONTHS[m];
+      monthly[mon] = {
+        anp: getN(`ANP_${mon}${dprYear}`),
+        fyp: getN(`FYPI_${mon}${dprYear}`) || getN(`FYP_${mon}${dprYear}`),
+        fyc: getN(`FYC_PHP_${dprYear}${String(m+1).padStart(2,'0')}`),
+        cases: getN(`OL_VUL_CS_CNT_${mon}${dprYear}`),
+        persistency: (() => { const v = get(`PERS_${mon}${dprYear}`); return v === '' || v == null ? null : (isNaN(Number(v)) ? null : Number(v)); })(),
+        producing: Number(get(`PRODUCING_${mon}${dprYear}`)) === 1,
+        newRecruit: Number(get(`NEW_RECRUIT_${mon}${dprYear}`)) === 1,
+      };
+    }
+
+    // YTD totals
+    const anpYtd = getN('ANP_YTD') || getN(`ANP_YTD`) || Object.values(monthly).reduce((s,m) => s + m.anp, 0);
+    const fypYtd = getN('FYP_YTD') || Object.values(monthly).reduce((s,m) => s + m.fyp, 0);
+    const fycYtd = getN('FYC_YTD') || Object.values(monthly).reduce((s,m) => s + m.fyc, 0);
+    const casesYtd = getN('CASECNT_MTD') || Object.values(monthly).reduce((s,m) => s + m.cases, 0);
+    const mdrtFyp = getN('MDRT_TOTALFYP') || fypYtd;
+
+    return { code, name, umName, mp, status, tier, monthly, anpYtd, fypYtd, fycYtd, casesYtd, mdrtFyp, dprYear };
+  }).filter(a => a.code && a.code !== '0' && a.code !== 'NaN');
+
+  return { agents, dprYear, monthsWithData: Array.from(monthsWithData), totalAgents: agents.length };
+}
+
+// Merge DPR data into existing master data
+function mergeDprIntoMaster(masterData, dprResult) {
+  const { agents: dprAgents, dprYear, monthsWithData } = dprResult;
+  const { agents: masterAgents } = masterData;
+
+  // Build lookup by normalized code
+  const masterMap = {};
+  masterAgents.forEach((a, idx) => { masterMap[normCode(a.code)] = idx; });
+
+  let updated = 0, added = 0;
+  const yearStr = String(dprYear);
+  const yearKey = dprYear;
+
+  dprAgents.forEach(dpr => {
+    const idx = masterMap[dpr.code];
+    if (idx !== undefined) {
+      // Update existing agent
+      const agent = masterAgents[idx];
+      agent[`anp${yearKey}`] = dpr.anpYtd;
+      agent[`fyp${yearKey}`] = dpr.fypYtd;
+      agent[`fyc${yearKey}`] = dpr.fycYtd;
+      agent[`cases${yearKey}`] = dpr.casesYtd;
+      agent[`status${yearKey}`] = dpr.status;
+      agent[`mp${yearKey}`] = dpr.mp ? 1 : 0;
+      agent[`tier${yearKey}`] = dpr.tier;
+      if (dpr.mp) agent.currentStatus = 'Active';
+      else if (dpr.status === 'Delisted') agent.currentStatus = 'Delisted';
+      agent.latestYear = Math.max(Number(agent.latestYear) || 0, yearKey);
+
+      // Recalculate totals
+      const anpYears = YEARS.map(y => Number(agent[`anp${y}`] || 0));
+      agent.totalAnp = anpYears.reduce((s,v) => s + v, 0);
+      const activeYrs = anpYears.filter(v => v > 0).length;
+      agent.yrsActive = activeYrs;
+      agent.avgAnp = activeYrs > 0 ? Math.round(agent.totalAnp / activeYrs) : 0;
+
+      updated++;
+    } else {
+      // New agent — add to master
+      const newAgent = {
+        code: dpr.code,
+        name: dpr.name,
+        displayName: parseName(dpr.name),
+        umName: dpr.umName,
+        umDisplayName: parseName(dpr.umName),
+        agentClass: '',
+        currentStatus: dpr.mp ? 'Active' : dpr.status,
+        firstYear: yearKey,
+        latestYear: yearKey,
+        reRecruit: '',
+      };
+      YEARS.forEach(y => {
+        newAgent[`anp${y}`] = y === yearKey ? dpr.anpYtd : 0;
+        newAgent[`fyp${y}`] = y === yearKey ? dpr.fypYtd : 0;
+        newAgent[`fyc${y}`] = y === yearKey ? dpr.fycYtd : 0;
+        newAgent[`cases${y}`] = y === yearKey ? dpr.casesYtd : 0;
+        newAgent[`status${y}`] = y === yearKey ? dpr.status : '—';
+        newAgent[`mp${y}`] = y === yearKey ? (dpr.mp ? 1 : 0) : 0;
+        newAgent[`tier${y}`] = y === yearKey ? dpr.tier : '—';
+      });
+      newAgent.totalAnp = dpr.anpYtd;
+      newAgent.avgAnp = dpr.anpYtd;
+      newAgent.yrsActive = dpr.anpYtd > 0 ? 1 : 0;
+      newAgent.prodYrs = dpr.anpYtd > 0 ? 1 : 0;
+
+      masterAgents.push(newAgent);
+      masterMap[dpr.code] = masterAgents.length - 1;
+      added++;
+    }
+  });
+
+  return { updated, added, dprYear, monthsWithData, totalDprAgents: dprAgents.length };
+}
+
+// Export updated master data to xlsx — matches original file structure
+function exportMasterToXlsx(masterData) {
+  const wb = XLSX.utils.book_new();
+  const { agents } = masterData;
+
+  // ── Agent Master List sheet ──
+  // Row 1: Title
+  // Row 2: Metadata
+  // Row 3: Section group headers (so parseMasterFile can find 'Agent Code' at row 4)
+  // Row 4: Column headers  ← this is what findHeaderRow() will detect
+  // Row 5+: Data
+
+  const sectionHeaders = [
+    '#','AGENT PROFILE','','','','','','','','','','',
+    'STATUS HISTORY','','','','','',
+    'MANPOWER','','','',
+    'AGENT TIER','','','',
+    'ANP (YTD)','','','',
+    'FYP (YTD)','','','',
+    'FYC (YTD)','','','',
+    'CASES (YTD)','','','',
+    'CALCULATED','','','',
+    'TRENDS & FLAGS'
+  ];
+
+  const masterHeaders = [
+    'No.','Agent Code','Agent Name','Birthdate','Age','PA Date','Agent Class',
+    'Unit Manager','Recruiter Code','Recruiter Name','First Yr','Latest Yr',
+    'Status 2022','Status 2023','Status 2024','Status 2025','Current Status','',
+    'MP 2022','MP 2023','MP 2024','MP 2025',
+    'Tier 2022','Tier 2023','Tier 2024','Tier 2025',
+    'ANP 2022','ANP 2023','ANP 2024','ANP 2025',
+    'FYP 2022','FYP 2023','FYP 2024','FYP 2025',
+    'FYC 2022','FYC 2023','FYC 2024','FYC 2025',
+    'Cases 2022','Cases 2023','Cases 2024','Cases 2025',
+    'Avg Annual ANP','Total Career ANP','Yrs Active','Producing Yrs',
+    'Re-Recruit Flag'
+  ];
+
+  const masterRows = agents.map((a, i) => [
+    i + 1,
+    a.code,
+    a.name || a.displayName,
+    a.birthdate || '',
+    a.age || '',
+    a.paDate || '',
+    a.agentClass || '',
+    a.umName || a.umDisplayName || '',
+    a.recruiterCode || '',
+    a.recruiterName || '',
+    a.firstYear || '',
+    a.latestYear || '',
+    a.status2022 || '—', a.status2023 || '—', a.status2024 || '—', a.status2025 || '—',
+    a.currentStatus || '', '',
+    a.mp2022 != null ? a.mp2022 : 0, a.mp2023 != null ? a.mp2023 : 0, a.mp2024 != null ? a.mp2024 : 0, a.mp2025 != null ? a.mp2025 : 0,
+    a.tier2022 || '—', a.tier2023 || '—', a.tier2024 || '—', a.tier2025 || '—',
+    Number(a.anp2022) || 0, Number(a.anp2023) || 0, Number(a.anp2024) || 0, Number(a.anp2025) || 0,
+    Number(a.fyp2022) || 0, Number(a.fyp2023) || 0, Number(a.fyp2024) || 0, Number(a.fyp2025) || 0,
+    Number(a.fyc2022) || 0, Number(a.fyc2023) || 0, Number(a.fyc2024) || 0, Number(a.fyc2025) || 0,
+    Number(a.cases2022) || 0, Number(a.cases2023) || 0, Number(a.cases2024) || 0, Number(a.cases2025) || 0,
+    Number(a.avgAnp) || 0, Number(a.totalAnp) || 0, Number(a.yrsActive) || 0, Number(a.prodYrs) || 0,
+    a.reRecruit || ''
+  ]);
+
+  const masterWs = XLSX.utils.aoa_to_sheet([
+    ['DAVAO-AMORA AGENCY — AGENT MASTER LIST (Updated ' + new Date().toLocaleDateString('en-PH') + ')'],
+    ['Data exported from Amora Agency Dashboard'],
+    sectionHeaders,
+    masterHeaders,
+    ...masterRows
+  ]);
+
+  // Set column widths
+  masterWs['!cols'] = masterHeaders.map((h, i) => ({wch: i <= 2 ? 22 : i === 7 ? 24 : 14}));
+  XLSX.utils.book_append_sheet(wb, masterWs, 'Agent Master List');
+
+  // ── Dashboard Summary sheet ──
+  const dashHeaders = ['Metric', '2022', '2023', '2024', '2025'];
+  const calcMetric = (fn) => YEARS.map(y => fn(y));
+
+  const dashRows = [
+    ['Total Agents in File', ...calcMetric(y => agents.filter(a => a[`mp${y}`] === 1 || Number(a[`anp${y}`]) > 0 || (a[`status${y}`] && a[`status${y}`] !== '—')).length)],
+    ['Active Licensed (MP=1)', ...calcMetric(y => agents.filter(a => a[`mp${y}`] === 1).length)],
+    ['Producing Agents', ...calcMetric(y => agents.filter(a => Number(a[`anp${y}`]) > 0).length)],
+    ['Total ANP YTD', ...calcMetric(y => agents.reduce((s,a) => s + Number(a[`anp${y}`] || 0), 0))],
+    ['Total FYP YTD', ...calcMetric(y => agents.reduce((s,a) => s + Number(a[`fyp${y}`] || 0), 0))],
+    ['Total Cases YTD', ...calcMetric(y => agents.reduce((s,a) => s + Number(a[`cases${y}`] || 0), 0))],
+  ];
+
+  const dashWs = XLSX.utils.aoa_to_sheet([
+    ['DAVAO-AMORA AGENCY — PERFORMANCE DASHBOARD (2022–2025)'],
+    ['Updated: ' + new Date().toLocaleDateString('en-PH')],
+    [],
+    ['AGENCY OVERVIEW'],
+    dashHeaders,
+    ...dashRows
+  ]);
+  dashWs['!cols'] = [{wch:30},{wch:14},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, dashWs, 'Dashboard');
+
+  // Generate and download
+  const wbOut = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob = new Blob([wbOut], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'Amora Agency Master Database (Updated).xlsx';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Upload Page (DPR Merge Feature) ─────────────────────────────
+function UploadPage({data, onMerge}) {
+  const inputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [mergeHistory, setMergeHistory] = useState([]);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.name.endsWith('.xlsx')) { setError('Only .xlsx files accepted'); return; }
+    setProcessing(true); setError(null); setResult(null);
+    try {
+      const ab = await file.arrayBuffer();
+      const dprResult = parseDprFile(ab);
+
+      if (data) {
+        const mergeResult = mergeDprIntoMaster(data, dprResult);
+        setResult({ ...mergeResult, fileName: file.name });
+        setMergeHistory(prev => [...prev, { fileName: file.name, time: new Date().toLocaleTimeString(), ...mergeResult }]);
+        if (onMerge) onMerge();  // trigger re-render of dashboard
+      } else {
+        setResult({ dprYear: dprResult.dprYear, totalDprAgents: dprResult.totalAgents, monthsWithData: dprResult.monthsWithData, fileName: file.name, updated: 0, added: 0, noMaster: true });
+      }
+    } catch(e) { setError(e.message); }
+    setProcessing(false);
+  };
+
+  const onDrop = (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); };
+  const onDragOver = (e) => { e.preventDefault(); setDragging(true); };
+  const onDragLeave = (e) => { e.preventDefault(); setDragging(false); };
+
+  return (
+    <div className="page">
+      <div style={{maxWidth:720,margin:'0 auto'}}>
+        {/* Header */}
+        <div className="anim-fiu d1" style={{marginBottom:24}}>
+          <h2 style={{fontSize:22,fontWeight:800,marginBottom:6}}>Upload Daily Performance Report</h2>
+          <p style={{color:COLORS.char60,fontSize:13,lineHeight:1.6}}>
+            Upload a new AIA DPR (.xlsx) to merge updated monthly data into your master database.
+            The system will detect which year and months have data, then update existing agents and add new ones.
+          </p>
+        </div>
+
+        {/* How it works */}
+        <div className="card anim-fiu d2" style={{marginBottom:20}}>
+          <div className="card-header"><span className="card-title">How It Works</span></div>
+          <div className="card-body" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16}}>
+            {[
+              {step:'1',title:'Upload DPR',desc:'Drag & drop or click to select your AIA Daily Performance Report (.xlsx)'},
+              {step:'2',title:'Auto-Detect & Merge',desc:'System detects report year, extracts monthly data, and updates the master database'},
+              {step:'3',title:'Download Updated',desc:'Download the updated master database with the new data merged in'},
+            ].map(s => (
+              <div key={s.step} style={{textAlign:'center',padding:12}}>
+                <div style={{width:36,height:36,borderRadius:'50%',background:COLORS.red,color:'white',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,margin:'0 auto 10px'}}>{s.step}</div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>{s.title}</div>
+                <div style={{fontSize:11,color:COLORS.char60,lineHeight:1.5}}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Upload zone */}
+        <div
+          className={`upload-zone anim-fiu d3 ${dragging ? 'dragging' : ''}`}
+          onClick={() => !processing && inputRef.current?.click()}
+          onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
+          style={{marginBottom:20, position:'relative'}}
+        >
+          <input ref={inputRef} type="file" accept=".xlsx" style={{display:'none'}} onChange={e => { handleFile(e.target.files?.[0]); e.target.value = ''; }} disabled={processing}/>
+          {processing ? (
+            <div>
+              <div style={{width:48,height:48,border:'3px solid #f0f0f0',borderTopColor:COLORS.red,borderRadius:'50%',animation:'spin 1s linear infinite',margin:'0 auto 16px'}}/>
+              <div style={{fontWeight:700,color:COLORS.red,fontSize:14}}>Parsing DPR and merging data...</div>
+              <div style={{fontSize:12,color:COLORS.char60,marginTop:4}}>This may take a moment for large files</div>
+            </div>
+          ) : (
+            <div>
+              <div style={{width:56,height:56,borderRadius:16,background:'#f5f5f5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}>
+                <Icon name="upload" size={28}/>
+              </div>
+              <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Drag & drop your DPR file here</div>
+              <div style={{color:COLORS.char60,fontSize:13}}>or <span style={{color:COLORS.red,fontWeight:600,textDecoration:'underline',cursor:'pointer'}}>click to browse</span></div>
+              <div style={{marginTop:12,fontSize:11,color:'#bbb',background:'#fafafa',display:'inline-block',padding:'4px 14px',borderRadius:20,border:'1px solid #f0f0f0'}}>.xlsx files only &middot; AIA Daily Performance Reports</div>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="anim-fiu" style={{padding:'12px 16px',background:'#fce4ec',borderRadius:12,fontSize:13,color:COLORS.red,fontWeight:500,marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            {error}
+          </div>
+        )}
+
+        {/* Success result */}
+        {result && !result.noMaster && (
+          <div className="card anim-fiu" style={{marginBottom:20,border:'2px solid #c8e6c9'}}>
+            <div className="card-header" style={{background:'#e8f5e9'}}>
+              <span className="card-title" style={{color:'#2e7d32'}}>
+                <svg width="18" height="18" fill="none" stroke="#2e7d32" viewBox="0 0 24 24" style={{marginRight:6,verticalAlign:'middle'}}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+                Merge Successful — {result.fileName}
+              </span>
+            </div>
+            <div className="card-body">
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:16,marginBottom:16}}>
+                {[
+                  {label:'Report Year', value:result.dprYear, color:COLORS.blue},
+                  {label:'DPR Agents', value:result.totalDprAgents, color:COLORS.charcoal},
+                  {label:'Updated', value:result.updated, color:COLORS.green},
+                  {label:'New Added', value:result.added, color:COLORS.orange},
+                ].map(m => (
+                  <div key={m.label} style={{textAlign:'center',padding:12,background:'#fafafa',borderRadius:10}}>
+                    <div style={{fontSize:24,fontWeight:800,color:m.color}}>{m.value}</div>
+                    <div style={{fontSize:11,color:COLORS.char60,marginTop:2}}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              {result.monthsWithData && result.monthsWithData.length > 0 && (
+                <div style={{fontSize:12,color:COLORS.char60,marginBottom:16}}>
+                  <b>Months with data:</b> {result.monthsWithData.join(', ')}
+                </div>
+              )}
+              <button onClick={() => exportMasterToXlsx(data)} style={{width:'100%',padding:'12px 20px',background:COLORS.green,color:'white',border:'none',borderRadius:10,fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'background .2s'}}>
+                <Icon name="download" size={18}/> Download Updated Master Database
+              </button>
+            </div>
+          </div>
+        )}
+
+        {result && result.noMaster && (
+          <div className="card anim-fiu" style={{marginBottom:20,border:'2px solid #fff9c4'}}>
+            <div className="card-body" style={{background:'#fffde7',textAlign:'center',padding:24}}>
+              <div style={{fontSize:14,fontWeight:600,color:'#f57f17',marginBottom:8}}>DPR Parsed Successfully</div>
+              <div style={{fontSize:12,color:COLORS.char60}}>
+                Found {result.totalDprAgents} agents for year {result.dprYear}.
+                To merge, first load your Master Database from the landing page, then upload the DPR here.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Merge history */}
+        {mergeHistory.length > 0 && (
+          <div className="card anim-fiu" style={{marginBottom:20}}>
+            <div className="card-header"><span className="card-title">Merge History (This Session)</span></div>
+            <div className="card-body" style={{padding:0}}>
+              <table className="tbl">
+                <thead><tr><th>File</th><th>Year</th><th className="num">Updated</th><th className="num">Added</th><th>Time</th></tr></thead>
+                <tbody>
+                  {mergeHistory.map((h,i) => (
+                    <tr key={i}><td style={{fontSize:12}}>{h.fileName}</td><td>{h.dprYear}</td><td className="num">{h.updated}</td><td className="num">{h.added}</td><td style={{fontSize:11,color:COLORS.char60}}>{h.time}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tips */}
+        <div className="anim-fiu d4" style={{fontSize:11,color:'#bbb',lineHeight:1.7,marginTop:8}}>
+          <b style={{color:COLORS.char60}}>Tips:</b> You can upload multiple DPR files in sequence. Each upload merges new data.
+          If you re-upload a DPR for the same period, it overwrites the previous data for that year.
+          After merging, click "Download Updated Master Database" to save the combined file.
+        </div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ─── Upload / Landing Page ────────────────────────────────────────
+function LandingPage({onLoad}) {
+  const inputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.name.endsWith('.xlsx')) { setError('Only .xlsx files accepted'); return; }
+    setLoading(true); setError(null);
+    try {
+      const ab = await file.arrayBuffer();
+      const data = parseMasterFile(ab);
+      onLoad(data);
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  };
+  
+  return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(135deg, #FAFAFA 0%, white 50%, #FFF0F3 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div className="anim-si" style={{width:'100%',maxWidth:520,background:'white',borderRadius:20,boxShadow:'0 20px 60px -15px rgba(211,17,69,.15), 0 8px 24px -8px rgba(0,0,0,.08)',overflow:'hidden'}}>
+        {/* Red header */}
+        <div style={{position:'relative',background:'linear-gradient(135deg, #e8134f, #D31145, #a80d37)',padding:'32px 32px 56px',overflow:'hidden'}}>
+          <div className="anim-fiu d1" style={{display:'flex',alignItems:'center',gap:14,position:'relative',zIndex:1}}>
+            <div style={{width:56,height:56,background:'white',borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 12px rgba(0,0,0,.15)'}}>
+              <span style={{color:COLORS.red,fontWeight:800,fontSize:20}}>AIA</span>
+            </div>
+            <div>
+              <h1 style={{color:'white',fontWeight:800,fontSize:22,lineHeight:1.2}}>Amora Agency</h1>
+              <p style={{color:'rgba(255,255,255,.6)',fontSize:11,fontWeight:600,marginTop:2}}>Master Database Dashboard</p>
+            </div>
+          </div>
+          <svg viewBox="0 0 1080 120" className="mountains-svg" preserveAspectRatio="none">
+            <polygon points="0,120 160,30 320,120" fill="white" opacity=".12"/>
+            <polygon points="160,120 380,10 600,120" fill="white" opacity=".45"/>
+            <polygon points="420,120 660,20 900,120" fill="white" opacity=".7"/>
+            <polygon points="680,120 900,0 1080,120" fill="white" opacity="1"/>
+          </svg>
+        </div>
+        
+        {/* Body */}
+        <div style={{padding:'32px 32px 24px'}}>
+          <div className={`upload-zone ${dragging?'dragging':''} anim-fiu d2`}
+            onClick={()=>!loading && inputRef.current?.click()}
+            onDragOver={e=>{e.preventDefault();setDragging(true)}}
+            onDragLeave={e=>{e.preventDefault();setDragging(false)}}
+            onDrop={e=>{e.preventDefault();setDragging(false);handleFile(e.dataTransfer.files?.[0])}}>
+            <input ref={inputRef} type="file" accept=".xlsx" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0])}/>
+            {loading ? (
+              <div>
+                <div style={{width:48,height:48,border:'3px solid #f0f0f0',borderTop:'3px solid '+COLORS.red,borderRadius:'50%',animation:'spin 1s linear infinite',margin:'0 auto'}}/>
+                <p style={{color:COLORS.red,fontWeight:700,marginTop:16}}>Loading master database...</p>
+              </div>
+            ) : (
+              <>
+                <div style={{width:56,height:56,borderRadius:16,background:'#f5f5f5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
+                  <Icon name="upload" size={28}/>
+                </div>
+                <p style={{fontWeight:700,fontSize:15,color:COLORS.charcoal}}>Load your Master Database</p>
+                <p style={{color:COLORS.char60,fontSize:13,marginTop:6}}>Drop <b>Amora Agency Master Database.xlsx</b> here or <span style={{color:COLORS.red,fontWeight:600,textDecoration:'underline'}}>click to browse</span></p>
+                <span style={{display:'inline-block',marginTop:12,fontSize:11,color:COLORS.char60,background:'#f5f5f5',padding:'4px 14px',borderRadius:20,border:'1px solid #eee'}}>.xlsx files only</span>
+              </>
+            )}
+          </div>
+          {error && <div style={{marginTop:12,padding:'10px 16px',background:'#fce4ec',borderRadius:10,fontSize:12,color:COLORS.red,fontWeight:500}}>{error}</div>}
+        </div>
+        <div style={{padding:'12px 32px',background:'#fafafa',borderTop:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',fontSize:10,color:'#ccc'}}>
+          <span>AIA Philippines</span><span style={{fontFamily:'monospace'}}>v2.0</span>
+        </div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────
+function App() {
+  const [data, setData] = useState(null);
+  const [page, setPage] = useState('overview');
+  const [mergeKey, setMergeKey] = useState(0);
+
+  if (!data) return <LandingPage onLoad={setData}/>;
+
+  const pages = {
+    overview: <OverviewPage data={data} key={mergeKey}/>,
+    trends: <TrendsPage data={data} key={mergeKey}/>,
+    agents: <AgentsPage data={data} key={mergeKey}/>,
+    units: <UnitsPage data={data} key={mergeKey}/>,
+    leaderboard: <LeaderboardPage data={data} key={mergeKey}/>,
+    rerecruit: <ReRecruitPage data={data} key={mergeKey}/>,
+    upload: <UploadPage data={data} onMerge={() => setMergeKey(k => k + 1)}/>,
+  };
+  
+  const titles = {
+    overview:'Agency Overview', trends:'Year-over-Year Analysis', agents:'Agent Roster',
+    units:'Unit Breakdown', leaderboard:'Production Leaderboard', rerecruit:'Re-Recruitment Pool', upload:'Upload DPR'
+  };
+
+  return (
+    <>
+      <Sidebar page={page} setPage={setPage}/>
+      <div className="main">
+        <div className="topbar">
+          <div>
+            <div className="topbar-title">{titles[page]}</div>
+            <div className="topbar-sub">Davao-Amora Agency &middot; 2022–2025 Data</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setData(null)} style={{padding:'8px 16px',border:'1px solid #eee',borderRadius:10,background:'white',cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',color:COLORS.char60}}>
+              <Icon name="upload" size={14}/> Load New File
+            </button>
+          </div>
+        </div>
+        {pages[page]}
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

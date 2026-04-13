@@ -137,6 +137,170 @@ export function exportQuarterlyBonus(bonusRows, quarter) {
   downloadWorkbook(wb, `Davao-Amora-Bonus-${quarter}-2026.xlsx`)
 }
 
+// ─── Highlights Report export ─────────────────────────────────────────────────
+
+export function exportHighlightsReport({
+  monthLabel,
+  selectedMonth,
+  ytdMonths,
+  allProducing,
+  top10Fyc,
+  top10Fyp,
+  top10Cases,
+  top5Units,
+  newRecruits,
+  consistentProducers,
+  mostTrusted,
+  kpis,
+  unitAgg,
+  agencyYtdFyp,
+}) {
+  const wb = XLSX.utils.book_new()
+  const abbr = monthLabel.slice(0, 3).toUpperCase()
+
+  // ── Sheet 1: Summary KPIs
+  const summaryRows = [
+    { Metric: 'Total Producing Advisors',  Value: kpis.totalProducing },
+    { Metric: 'Total Cases',               Value: kpis.totalCases },
+    { Metric: 'Total FYP (PHP)',           Value: kpis.totalFyp },
+    { Metric: 'Total FYC (PHP)',           Value: kpis.totalFyc },
+    { Metric: 'Case Rate (Cases / Producing Advisor)', Value: Number(kpis.caseRate.toFixed(2)) },
+    { Metric: 'Average Case Size (FYP / Case) (PHP)',  Value: Math.round(kpis.avgCaseSize) },
+  ]
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(summaryRows)), 'Summary')
+
+  // ── Top-10 helper
+  const fmtTop = (rows, valueLabel) =>
+    rows.map((a, i) => ({
+      Rank:       i + 1,
+      Advisor:    a.name,
+      Segment:    a.segment,
+      Unit:       a.unitName || '',
+      [valueLabel]: a.m?.[valueLabel.toLowerCase()] ?? a.m?.fyc ?? 0,
+    }))
+
+  const buildTop10Sheet = (top10, key, label) => {
+    const rows = [
+      { Rank: '', Advisor: `— OVERALL TOP 10 — ${label}`, Segment: '', Unit: '', [label]: '' },
+      ...top10.overall.map((a, i) => ({ Rank: i+1, Advisor: a.name, Segment: a.segment, Unit: a.unitName||'', [label]: a.m?.[key]||0 })),
+      { Rank: '', Advisor: '', Segment: '', Unit: '', [label]: '' },
+      { Rank: '', Advisor: `— ROOKIE TOP 10 — ${label}`, Segment: '', Unit: '', [label]: '' },
+      ...top10.rookie.map((a, i) => ({ Rank: i+1, Advisor: a.name, Segment: a.segment, Unit: a.unitName||'', [label]: a.m?.[key]||0 })),
+      { Rank: '', Advisor: '', Segment: '', Unit: '', [label]: '' },
+      { Rank: '', Advisor: `— SEASONED TOP 10 — ${label}`, Segment: '', Unit: '', [label]: '' },
+      ...top10.seasoned.map((a, i) => ({ Rank: i+1, Advisor: a.name, Segment: a.segment, Unit: a.unitName||'', [label]: a.m?.[key]||0 })),
+    ]
+    return autoWidth(XLSX.utils.json_to_sheet(rows))
+  }
+
+  XLSX.utils.book_append_sheet(wb, buildTop10Sheet(top10Fyc,   'fyc',   'FYC (PHP)'), 'Top 10 FYC')
+  XLSX.utils.book_append_sheet(wb, buildTop10Sheet(top10Fyp,   'fyp',   'FYP (PHP)'), 'Top 10 FYP')
+  XLSX.utils.book_append_sheet(wb, buildTop10Sheet(top10Cases, 'cases', 'Cases'),     'Top 10 Cases')
+
+  // ── Sheet: Top 5 Unit Managers
+  const umRows = unitAgg
+    .sort((a, b) => b.totalFyc - a.totalFyc)
+    .slice(0, 5)
+    .map((u, i) => ({
+      Rank:              i + 1,
+      'Unit Manager':    u.unitName,
+      'Team Size':       u.agents.length,
+      'Producing':       u.producing,
+      'New Recruits':    u.newRecruits,
+      'FYC (PHP)':       u.totalFyc,
+      'FYP (PHP)':       u.totalFyp,
+      'Cases':           u.totalCases,
+    }))
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(umRows.length ? umRows : [{ Note: 'No unit data' }])), 'Top 5 Units')
+
+  // ── Sheet: All Producing Advisors
+  const producingRows = allProducing.map((a, i) => ({
+    '#':            i + 1,
+    'Advisor Name': a.name,
+    'Segment':      a.segment,
+    'Unit':         a.unitName || '',
+    'FYC (PHP)':    a.m?.fyc  || 0,
+    'FYP (PHP)':    a.m?.fyp  || 0,
+    'Cases':        a.m?.cases || 0,
+  }))
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(producingRows.length ? producingRows : [{ Note: 'No producing advisors' }])), 'All Producing')
+
+  // ── Sheet: Most Trusted Advisors (FYC ≥ 10k)
+  const trustedRows = mostTrusted.map((a, i) => ({
+    Rank:           i + 1,
+    'Advisor Name': a.name,
+    'Segment':      a.segment,
+    'Unit':         a.unitName || '',
+    'FYC (PHP)':    a.m?.fyc  || 0,
+    'FYP (PHP)':    a.m?.fyp  || 0,
+    'Cases':        a.m?.cases || 0,
+  }))
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(trustedRows.length ? trustedRows : [{ Note: 'No advisors with FYC ≥ ₱10,000' }])), 'Most Trusted')
+
+  // ── Sheet: Consistent Producers
+  const consistentRows = consistentProducers.map((a, i) => ({
+    '#':                     i + 1,
+    'Advisor Name':          a.name,
+    'Segment':               a.segment,
+    'Unit':                  a.unitName || '',
+    'Months Produced':       a.streak,
+    'Out of Months':         ytdMonths.length,
+    'Active Months':         ytdMonths.filter(mo => a.monthly?.[mo]?.producing).join(', '),
+    'YTD FYP (PHP)':         ytdMonths.reduce((s, mo) => s + (a.monthly?.[mo]?.fyp || 0), 0),
+    'YTD FYC (PHP)':         ytdMonths.reduce((s, mo) => s + (a.monthly?.[mo]?.fyc || 0), 0),
+  }))
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(consistentRows.length ? consistentRows : [{ Note: 'No consistent producers' }])), 'Consistent Producers')
+
+  // ── Sheet: New Recruits
+  const recruitRows = newRecruits.map((a, i) => ({
+    '#':            i + 1,
+    'Recruit Name': a.name,
+    'Segment':      a.segment,
+    'Recruiter':    a.recruiterName || '',
+    'Unit':         a.unitName || '',
+  }))
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(recruitRows.length ? recruitRows : [{ Note: 'No new recruits this month' }])), 'New Recruits')
+
+  // ── Sheet: GAMA FYP Tracker
+  const GAMA_TIERS = [
+    { name: 'Pre-GAMA',        fyp: 0 },
+    { name: 'GAMA Qualifying', fyp: 3_000_000 },
+    { name: 'GAMA Silver',     fyp: 6_000_000 },
+    { name: 'GAMA Gold',       fyp: 12_000_000 },
+    { name: 'GAMA Platinum',   fyp: 24_000_000 },
+  ]
+  const getCurrentTier = ytd => {
+    let t = GAMA_TIERS[0]
+    for (const tier of GAMA_TIERS) { if (ytd >= tier.fyp) t = tier; else break }
+    return t
+  }
+  const getNextTier = ytd => {
+    for (const tier of GAMA_TIERS) { if (ytd < tier.fyp) return tier }
+    return null
+  }
+  const gamaRows = [
+    {
+      Name:              'Agency Overall',
+      'YTD FYP (PHP)':   agencyYtdFyp,
+      'Current Tier':    getCurrentTier(agencyYtdFyp).name,
+      'Next Tier':       getNextTier(agencyYtdFyp)?.name ?? 'Max Tier',
+      'Next Tier Target (PHP)': getNextTier(agencyYtdFyp)?.fyp ?? agencyYtdFyp,
+      'Gap to Next (PHP)': Math.max(0, (getNextTier(agencyYtdFyp)?.fyp ?? agencyYtdFyp) - agencyYtdFyp),
+    },
+    ...unitAgg.sort((a,b) => b.ytdFyp - a.ytdFyp).map(u => ({
+      Name:              u.unitName,
+      'YTD FYP (PHP)':   u.ytdFyp,
+      'Current Tier':    getCurrentTier(u.ytdFyp).name,
+      'Next Tier':       getNextTier(u.ytdFyp)?.name ?? 'Max Tier',
+      'Next Tier Target (PHP)': getNextTier(u.ytdFyp)?.fyp ?? u.ytdFyp,
+      'Gap to Next (PHP)': Math.max(0, (getNextTier(u.ytdFyp)?.fyp ?? u.ytdFyp) - u.ytdFyp),
+    })),
+  ]
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(gamaRows)), 'GAMA Tracker')
+
+  downloadWorkbook(wb, `Davao-Amora-Highlights-${abbr}-2026.xlsx`)
+}
+
 // ─── Agents export ────────────────────────────────────────────────────────────
 
 export function exportAgents(agents) {

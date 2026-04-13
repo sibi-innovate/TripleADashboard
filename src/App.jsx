@@ -10,6 +10,9 @@ import AgentsPage from './pages/AgentsPage'
 import ActivationPage from './pages/ActivationPage'
 import TargetsPage from './pages/TargetsPage'
 import AwardsPage from './pages/AwardsPage'
+import AgentProfilePage from './pages/AgentProfilePage'
+import BulletinPage from './pages/BulletinPage'
+import HighlightsPage from './pages/HighlightsPage'
 
 function WithNavbar({ children }) {
   return (
@@ -35,6 +38,9 @@ export default function App() {
           <Route path="/units" element={<WithNavbar><UnitsPage /></WithNavbar>} />
           <Route path="/agents" element={<WithNavbar><AgentsPage /></WithNavbar>} />
           <Route path="/awards" element={<WithNavbar><AwardsPage /></WithNavbar>} />
+          <Route path="/agent/:code" element={<WithNavbar><AgentProfilePage /></WithNavbar>} />
+          <Route path="/bulletin" element={<WithNavbar><BulletinPage /></WithNavbar>} />
+          <Route path="/highlights" element={<WithNavbar><HighlightsPage /></WithNavbar>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

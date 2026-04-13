@@ -1,72 +1,69 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { parseExcelFile } from '../utils/parseExcel'
-
-// ---------------------------------------------------------------------------
-// Context
-// ---------------------------------------------------------------------------
+import { supabase } from '../lib/supabase'
 
 const DataContext = createContext(null)
-
-const STORAGE_KEY = 'davao-amora-data'
 
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
 export function DataProvider({ children }) {
-  const [data,      setData]      = useState(null)   // { agents, agencyKpis, units, uploadDate }
-  const [isLoading, setIsLoading] = useState(false)
+  const [data,      setData]      = useState(null)
+  const [isLoading, setIsLoading] = useState(true)   // true on mount while fetching
   const [error,     setError]     = useState(null)
 
-  // On mount: try to restore from localStorage
+  // On mount: load from Supabase (single source of truth for all users)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        setData(parsed)
+    async function fetchFromSupabase() {
+      try {
+        const { data: row, error: fetchError } = await supabase
+          .from('agency_data')
+          .select('data, uploaded_at')
+          .eq('id', 1)
+          .single()
+
+        if (fetchError) throw fetchError
+
+        if (row?.data) {
+          setData(row.data)
+        }
+      } catch (e) {
+        // Supabase unavailable or no data yet — silently continue
+        console.warn('DataContext: could not load from Supabase:', e.message)
+      } finally {
+        setIsLoading(false)
       }
-    } catch (e) {
-      // Corrupted or oversized entry – clear it so the UI stays usable
-      console.warn('DataContext: could not restore from localStorage:', e)
-      try { localStorage.removeItem(STORAGE_KEY) } catch (_) { /* ignore */ }
     }
+
+    fetchFromSupabase()
   }, [])
 
   // --------------------------------------------------------------------------
-  // loadData: accepts an ArrayBuffer produced by FileReader.readAsArrayBuffer
+  // loadData: parse Excel + save to Supabase (admin only)
   // --------------------------------------------------------------------------
   async function loadData(arrayBuffer) {
     setIsLoading(true)
     setError(null)
 
     try {
-      // parseExcelFile is synchronous but can be slow on large files;
-      // wrapping in a Promise keeps the UI from locking up by yielding first.
       const result = await new Promise((resolve, reject) => {
-        // Yield to the event loop so React can repaint (e.g. show a spinner)
         setTimeout(() => {
-          try {
-            resolve(parseExcelFile(arrayBuffer))
-          } catch (err) {
-            reject(err)
-          }
+          try { resolve(parseExcelFile(arrayBuffer)) }
+          catch (err) { reject(err) }
         }, 0)
       })
 
-      setData(result)
+      // Save to Supabase (requires authenticated session via RLS)
+      const { error: saveError } = await supabase
+        .from('agency_data')
+        .upsert({ id: 1, data: result, uploaded_at: new Date().toISOString() })
 
-      // Persist to localStorage; if quota is exceeded, keep data in memory only
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(result))
-      } catch (storageErr) {
-        console.warn(
-          'DataContext: localStorage quota exceeded – data kept in memory only.',
-          storageErr
-        )
-      }
+      if (saveError) throw new Error('Upload failed: ' + saveError.message)
+
+      setData(result)
     } catch (err) {
-      console.error('DataContext: parseExcelFile failed:', err)
+      console.error('DataContext: loadData failed:', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsLoading(false)
@@ -74,17 +71,14 @@ export function DataProvider({ children }) {
   }
 
   // --------------------------------------------------------------------------
-  // clearData
+  // clearData: sign out + clear local state (does NOT wipe Supabase)
   // --------------------------------------------------------------------------
-  function clearData() {
+  async function clearData() {
+    await supabase.auth.signOut()
     setData(null)
     setError(null)
-    try { localStorage.removeItem(STORAGE_KEY) } catch (_) { /* ignore */ }
   }
 
-  // --------------------------------------------------------------------------
-  // Context value
-  // --------------------------------------------------------------------------
   const value = {
     data,
     loadData,

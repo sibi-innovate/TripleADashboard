@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { formatCurrency } from '../utils/formatters'
 import KpiCard from '../components/KpiCard'
@@ -14,7 +14,6 @@ const SORT_COLS = {
   totalHeadcount: (u) => u.totalHeadcount ?? 0,
   rookieCount:    (u) => u.rookieCount ?? 0,
   seasonedCount:  (u) => u.seasonedCount ?? 0,
-  totalFypMtd:    (u) => u.totalFypMtd ?? 0,
   totalFycMtd:    (u) => u.totalFycMtd ?? 0,
   producingCount: (u) => u.producingCount ?? 0,
   totalCases:     (u) => u.totalCases ?? 0,
@@ -74,14 +73,14 @@ function CountBadge({ value, color }) {
 
 function AgentsSubTable({ agents }) {
   const sorted = useMemo(
-    () => [...(agents ?? [])].sort((a, b) => (b.fypTotal ?? 0) - (a.fypTotal ?? 0)),
+    () => [...(agents ?? [])].sort((a, b) => (b.fycMtd ?? 0) - (a.fycMtd ?? 0)),
     [agents]
   )
 
   if (!sorted.length) {
     return (
       <tr>
-        <td colSpan={9} className="bg-gray-50 px-10 py-3 text-xs text-gray-400 italic">
+        <td colSpan={8} className="bg-gray-50 px-10 py-3 text-xs text-gray-400 italic">
           No agents found for this unit.
         </td>
       </tr>
@@ -90,7 +89,7 @@ function AgentsSubTable({ agents }) {
 
   return (
     <tr>
-      <td colSpan={9} className="p-0">
+      <td colSpan={8} className="p-0">
         <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -98,7 +97,6 @@ function AgentsSubTable({ agents }) {
                 <th className="text-left py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">Name</th>
                 <th className="text-center py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">Yr</th>
                 <th className="text-center py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">Segment</th>
-                <th className="text-right py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">FYP MTD</th>
                 <th className="text-right py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">FYC MTD</th>
                 <th className="text-center py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">Cases</th>
                 <th className="text-center py-2 px-3 text-[10px] font-semibold text-white bg-[#D31145] uppercase tracking-wider">Status</th>
@@ -111,7 +109,10 @@ function AgentsSubTable({ agents }) {
                   className="even:bg-gray-50"
                 >
                   <td className="py-2 px-3 font-medium text-gray-800 whitespace-nowrap">
-                    {agent.name || '—'}
+                    {agent.code
+                      ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name || '—'}</Link>
+                      : (agent.name || '—')
+                    }
                   </td>
                   <td className="py-2 px-3 text-center text-gray-600">
                     {agent.agentYear ?? '—'}
@@ -120,9 +121,6 @@ function AgentsSubTable({ agents }) {
                     <SegmentBadge segment={agent.segment} />
                   </td>
                   <td className="py-2 px-3 text-right font-mono text-gray-800">
-                    {formatCurrency(agent.fypTotal, true)}
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono text-gray-600">
                     {formatCurrency(agent.fycMtd, true)}
                   </td>
                   <td className="py-2 px-3 text-center text-gray-700">
@@ -150,7 +148,7 @@ export default function UnitsPage() {
   const navigate = useNavigate()
 
   const [areaFilter, setAreaFilter] = useState('All')
-  const [sortCol, setSortCol] = useState('totalFypMtd')
+  const [sortCol, setSortCol] = useState('totalFycMtd')
   const [sortDir, setSortDir] = useState('desc')
   const [expandedRows, setExpandedRows] = useState(new Set())
 
@@ -172,7 +170,6 @@ export default function UnitsPage() {
         totalHeadcount: filtered.length,
         rookieCount:    rookies.length,
         seasonedCount:  seasoned.length,
-        totalFypMtd:    filtered.reduce((s, a) => s + (a.fypTotal  ?? 0), 0),
         totalFycMtd:    filtered.reduce((s, a) => s + (a.fycMtd    ?? 0), 0),
         producingCount: producing.length,
         totalCases:     filtered.reduce((s, a) => s + (a.casesTotal ?? 0), 0),
@@ -187,7 +184,7 @@ export default function UnitsPage() {
 
   // Sorted units
   const sortedUnits = useMemo(() => {
-    const getter = SORT_COLS[sortCol] ?? SORT_COLS.totalFypMtd
+    const getter = SORT_COLS[sortCol] ?? SORT_COLS.totalFycMtd
     return [...units].sort((a, b) => {
       const av = getter(a)
       const bv = getter(b)
@@ -345,14 +342,6 @@ export default function UnitsPage() {
 
                     <th
                       className={thRight}
-                      onClick={() => handleSort('totalFypMtd')}
-                    >
-                      FYP MTD
-                      <SortIcon col="totalFypMtd" sortCol={sortCol} sortDir={sortDir} />
-                    </th>
-
-                    <th
-                      className={thRight}
                       onClick={() => handleSort('totalFycMtd')}
                     >
                       FYC MTD
@@ -437,13 +426,8 @@ export default function UnitsPage() {
                           <CountBadge value={unit.seasonedCount} color="purple" />
                         </td>
 
-                        {/* FYP MTD Total */}
-                        <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900 whitespace-nowrap">
-                          {formatCurrency(unit.totalFypMtd, true)}
-                        </td>
-
                         {/* FYC MTD Total */}
-                        <td className="px-4 py-3 text-right font-mono text-gray-700 whitespace-nowrap">
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900 whitespace-nowrap">
                           {formatCurrency(unit.totalFycMtd, true)}
                         </td>
 

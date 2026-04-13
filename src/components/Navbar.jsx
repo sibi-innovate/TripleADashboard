@@ -11,6 +11,8 @@ const NAV_LINKS = [
   { label: 'Agents', to: '/agents' },
   { label: 'Targets', to: '/targets' },
   { label: 'Awards', to: '/awards' },
+  { label: 'Bulletin', to: '/bulletin' },
+  { label: 'Highlights', to: '/highlights' },
 ];
 
 export default function Navbar() {
@@ -19,7 +21,6 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleUploadNew = () => {
-    clearData();
     navigate('/');
   };
 

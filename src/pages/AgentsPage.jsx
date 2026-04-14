@@ -87,6 +87,7 @@ export default function AgentsPage() {
   const [unit,       setUnit]       = useState('All')
   const [status,     setStatus]     = useState('All')
   const [ytdMode,    setYtdMode]    = useState(false)
+  const [selectedMonthIdx, setSelectedMonthIdx] = useState(CURRENT_MONTH_IDX)
 
   // --------------------------------------------------
   // Sort state — default ANP MTD descending
@@ -108,11 +109,11 @@ export default function AgentsPage() {
     () => (data?.agents ?? []).filter(a => a.manpowerInd).map(a => ({
       ...a,
       moInactive: computeMonthsInactive(a),
-      _ytdFyp:  getAgentYtdFyp(a, CURRENT_MONTH_IDX),
-      _ytdFyc:  getAgentYtdFyc(a, CURRENT_MONTH_IDX),
-      _ytdCases: getAgentYtdCases(a, CURRENT_MONTH_IDX),
+      _ytdFyp:  getAgentYtdFyp(a, selectedMonthIdx),
+      _ytdFyc:  getAgentYtdFyc(a, selectedMonthIdx),
+      _ytdCases: getAgentYtdCases(a, selectedMonthIdx),
     })),
-    [data]
+    [data, selectedMonthIdx]
   )
 
   // --------------------------------------------------
@@ -341,18 +342,41 @@ export default function AgentsPage() {
             </div>
           )}
 
-          {/* YTD toggle */}
+          {/* Period toggle */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">View</label>
             <div className="flex rounded-lg border border-gray-300 overflow-hidden h-9">
               <button
                 onClick={() => setYtdMode(false)}
                 className={`px-3 text-xs font-semibold transition-colors ${!ytdMode ? 'bg-[#D31145] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-              >MTD</button>
+              >Monthly</button>
               <button
                 onClick={() => setYtdMode(true)}
                 className={`px-3 text-xs font-semibold border-l border-gray-300 transition-colors ${ytdMode ? 'bg-[#D31145] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               >YTD</button>
+            </div>
+          </div>
+
+          {/* Month pills (shown in both modes to select which month/YTD up to) */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              {ytdMode ? 'Up to' : 'Month'}
+            </label>
+            <div className="flex gap-1 flex-wrap">
+              {MONTH_ABBRS.map((abbr, i) => (
+                <button
+                  key={abbr}
+                  onClick={() => setSelectedMonthIdx(i)}
+                  disabled={i > CURRENT_MONTH_IDX}
+                  className={[
+                    'px-2.5 py-1 rounded text-xs font-semibold transition-colors',
+                    i === selectedMonthIdx ? 'bg-[#D31145] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50',
+                    i > CURRENT_MONTH_IDX ? 'opacity-30 cursor-not-allowed' : '',
+                  ].join(' ')}
+                >
+                  {abbr.charAt(0) + abbr.slice(1).toLowerCase()}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -473,26 +497,32 @@ export default function AgentsPage() {
                           {agent.unitName ?? '—'}
                         </td>
 
-                        {/* ANP MTD / FYP YTD */}
+                        {/* ANP / FYP YTD */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                          {ytdMode ? formatPeso(agent._ytdFyp) : formatCurrency(agent.anpMtd)}
+                          {ytdMode
+                            ? formatPeso(agent._ytdFyp)
+                            : formatCurrency(agent.monthly?.[MONTH_ABBRS[selectedMonthIdx]]?.anp ?? agent.anpMtd)}
                         </td>
 
-                        {/* FYC MTD / FYC YTD */}
+                        {/* FYC */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                          {ytdMode ? formatPeso(agent._ytdFyc) : formatCurrency(agent.fycMtd)}
+                          {ytdMode
+                            ? formatPeso(agent._ytdFyc)
+                            : formatCurrency(agent.monthly?.[MONTH_ABBRS[selectedMonthIdx]]?.fyc ?? agent.fycMtd)}
                         </td>
 
-                        {/* FYP MTD — hidden in YTD mode */}
+                        {/* FYP — hidden in YTD mode */}
                         {!ytdMode && (
                           <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                            {formatCurrency(agent.fypTotal, true)}
+                            {formatCurrency(agent.monthly?.[MONTH_ABBRS[selectedMonthIdx]]?.fyp ?? agent.fypTotal, true)}
                           </td>
                         )}
 
-                        {/* Cases Total / Cases YTD */}
+                        {/* Cases */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800">
-                          {ytdMode ? agent._ytdCases : (agent.casesTotal ?? '—')}
+                          {ytdMode
+                            ? agent._ytdCases
+                            : (agent.monthly?.[MONTH_ABBRS[selectedMonthIdx]]?.cases ?? agent.casesTotal ?? '—')}
                         </td>
 
                         {/* Regular Cases */}

@@ -112,7 +112,7 @@ function parseAgentRow(row) {
     : null
 
   // --- Segmentation from APPTDATE (fallback if AGTYR missing)
-  const rawAppt  = get('APPTDATE') ?? get('APPT DATE')
+  const rawAppt  = get('PADATE') ?? get('PA DATE') ?? get('PA_DATE') ?? get('APPTDATE') ?? get('APPT DATE')
   const apptDate = rawAppt != null ? num(rawAppt) : 0
   let agentYears = null
   let segment    = 'Unknown'
@@ -229,7 +229,7 @@ function parseAgentRow(row) {
   const recruiterCode = String(get('RECRUITER_CODE') ?? '').trim()
 
   // --- Birth date (optional column — graceful if missing)
-  const rawBirth  = get('BIRTH_DATE') ?? get('BIRTHDATE') ?? get('BIRTH DATE')
+  const rawBirth  = get('AGENT_BIRTHDATE') ?? get('BIRTH_DATE') ?? get('BIRTHDATE') ?? get('BIRTH DATE')
   let birthDate = null
   if (rawBirth != null) {
     const bNum = num(rawBirth)

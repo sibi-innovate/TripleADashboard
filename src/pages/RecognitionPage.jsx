@@ -82,9 +82,10 @@ export default function RecognitionPage() {
 // ─── Sub-tab components ──────────────────────────────────────────────────────
 
 function BirthdaysTab({ monthIdx }) {
-  const { agents } = useData();
+  const { data } = useData();
+  const agents = data?.agents || [];
 
-  const hasBirthDateData = agents?.some(a => a.birthDate);
+  const hasBirthDateData = agents.some(a => a.birthDate);
   if (!hasBirthDateData) {
     return (
       <EmptyState
@@ -143,9 +144,10 @@ function BirthdaysTab({ monthIdx }) {
 }
 
 function NewAdvisorsTab({ monthIdx }) {
-  const { agents } = useData();
+  const { data } = useData();
+  const agents = data?.agents || [];
 
-  const newAdvisors = (agents || []).filter(a => {
+  const newAdvisors = agents.filter(a => {
     if (!a.appointmentDate) return false;
     const d = new Date(a.appointmentDate);
     return !isNaN(d) && d.getMonth() === monthIdx;
@@ -191,11 +193,12 @@ function NewAdvisorsTab({ monthIdx }) {
 }
 
 function AwardsTab({ monthIdx }) {
-  const { agents, targets } = useData();
+  const { data, targets } = useData();
+  const agents = data?.agents || [];
   const mdrtGoal = targets?.mdrt_goal || 3518400;
 
-  const qualified = (agents || []).filter(a => getAgentYtdFyp(a, monthIdx) >= mdrtGoal);
-  const aspirant  = (agents || []).filter(a => {
+  const qualified = agents.filter(a => getAgentYtdFyp(a, monthIdx) >= mdrtGoal);
+  const aspirant  = agents.filter(a => {
     const fyp = getAgentYtdFyp(a, monthIdx);
     return fyp >= mdrtGoal * 0.30 && fyp < mdrtGoal;
   });
@@ -263,8 +266,9 @@ function AwardCard({ agent, monthIdx, mdrtGoal }) {
 }
 
 function HighlightsTab({ monthIdx }) {
-  const { agents } = useData();
-  if (!agents || agents.length === 0) {
+  const { data } = useData();
+  const agents = data?.agents || [];
+  if (agents.length === 0) {
     return <EmptyState title="No data available" message="Upload data to see monthly highlights." />;
   }
 

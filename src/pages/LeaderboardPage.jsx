@@ -185,10 +185,10 @@ export default function LeaderboardPage() {
     return [...map.values()].sort((a, b) => b.count - a.count)
   }, [newRecruits])
 
-  // ── Agency leaders (aggregated from filtered month data)
+  // ── Agency leaders (aggregated from area/segment-filtered month data)
   const agencyLeaders = useMemo(() => {
     const map = new Map()
-    for (const agent of monthData) {
+    for (const agent of filtered) {
       const key = agent.unitCode || '__UNASSIGNED__'
       if (!map.has(key)) map.set(key, { unitCode: agent.unitCode, unitName: agent.unitName, ua: [] })
       map.get(key).ua.push(agent)

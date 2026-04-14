@@ -133,29 +133,107 @@ function TopContributorRow({ rank, agent, fyp }) {
   )
 }
 
-function PropensityRow({ agent, score }) {
-  const signals = []
-  if (score >= 30) signals.push('Active last month')
-  if (score >= 50) signals.push('Consecutive months')
-  if (agent.segment === 'Seasoned') signals.push('Seasoned')
+function getPropensityRemarks(agent, score, monthIdx, allAgents) {
+  const remarks = []
+  if (monthIdx > 0) {
+    const lastCases = agent.monthly?.[MONTH_ABBRS[monthIdx - 1]]?.cases || 0
+    if (lastCases > 0) remarks.push('Produced last month')
+  }
+  let consecutive = 0
+  for (let i = monthIdx - 1; i >= 0; i--) {
+    if ((agent.monthly?.[MONTH_ABBRS[i]]?.cases || 0) > 0) consecutive++
+    else break
+  }
+  if (consecutive >= 2) remarks.push(`${consecutive} consecutive months`)
+  if (agent.segment === 'Seasoned') remarks.push('Seasoned advisor')
+  else if (agent.segment === 'Rookie') remarks.push('Rookie advisor')
+  // Near bonus tier
+  if (score >= 60 && score - (remarks.length * 10) <= 20) remarks.push('Near bonus tier')
+  return remarks
+}
+
+function PropensityRow({ agent, score, monthIdx = CURRENT_MONTH_IDX, allAgents = [], compact = false }) {
+  const remarks = getPropensityRemarks(agent, score, monthIdx, allAgents)
+  const initials = name => {
+    const p = name?.trim().split(/\s+/) || []
+    if (p.length <= 1) return (p[0]?.[0] || '?').toUpperCase()
+    return (p[0][0] + p[p.length - 1][0]).toUpperCase()
+  }
+  const scoreColor = score >= 80 ? '#D31145' : score >= 60 ? 'var(--amber,#C97B1A)' : 'var(--char-60,#6B7180)'
 
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
       <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
-        style={{ backgroundColor: 'var(--amber,#C97B1A)', fontFamily: 'AIA Everest' }}>
-        {(agent.name?.[0] || '?').toUpperCase()}
+        style={{ backgroundColor: scoreColor, fontFamily: 'AIA Everest' }}>
+        {initials(agent.name)}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</p>
         <p className="text-[10px] truncate" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
-          {signals.join(' · ')}
+          {remarks.length > 0 ? remarks.join(' · ') : agent.unitName || '—'}
         </p>
       </div>
       <div className="flex-shrink-0 text-right">
-        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--amber,#C97B1A)' }}>
+        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: scoreColor }}>
           {score}
         </span>
         <p className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>score</p>
+      </div>
+    </div>
+  )
+}
+
+function PropensityModal({ list, monthIdx, allAgents, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ backgroundColor: 'rgba(28,28,40,0.6)', backdropFilter: 'blur(2px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="mt-auto w-full max-w-lg mx-auto rounded-t-2xl flex flex-col"
+        style={{ backgroundColor: 'var(--surface,#F7F8FA)', maxHeight: '85vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full" style={{ backgroundColor: 'var(--border,#E8E9ED)' }} />
+        </div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+          <div>
+            <h2 className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', fontWeight: 800, color: '#1C1C28' }}>
+              To Activate
+            </h2>
+            <p className="text-[10px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              {list.length} advisors not yet producing · ranked by propensity
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full"
+            style={{ backgroundColor: 'var(--border,#E8E9ED)' }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#6B7180" strokeWidth="2" strokeLinecap="round">
+              <line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/>
+            </svg>
+          </button>
+        </div>
+        {/* Score legend */}
+        <div className="flex gap-3 px-5 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+          <span className="flex items-center gap-1 text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            <span className="inline-block w-2 h-2 rounded-full bg-[#D31145]" /> 80+ High
+          </span>
+          <span className="flex items-center gap-1 text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--amber,#C97B1A)' }} /> 60–79 Medium
+          </span>
+          <span className="flex items-center gap-1 text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--char-30,#B0B3BC)' }} /> &lt;60 Low
+          </span>
+        </div>
+        {/* List */}
+        <div className="overflow-y-auto flex-1 px-5 pb-6">
+          {list.map(({ agent, score }, i) => (
+            <PropensityRow key={agent.code || i} agent={agent} score={score} monthIdx={monthIdx} allAgents={allAgents} />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -200,18 +278,22 @@ export default function OverviewPage() {
 
   const [period, setPeriod] = useState({ mode: 'monthly', monthIdx: CURRENT_MONTH_IDX })
   const [area, setArea] = useState('All')
+  const [segmentFilter, setSegmentFilter] = useState('All')
   const [trendMetric, setTrendMetric] = useState('FYP')
+  const [showPropensityModal, setShowPropensityModal] = useState(false)
 
   // Load targets on mount
   useEffect(() => { loadTargets?.() }, [])
 
   const { mode, monthIdx } = period
 
-  // All agents filtered by area
+  // All agents filtered by area + segment
   const filteredAgents = useMemo(() => {
-    const agents = data?.agents || []
-    return area === 'All' ? agents : agents.filter(a => a.area === area)
-  }, [data, area])
+    let agents = data?.agents || []
+    if (area !== 'All') agents = agents.filter(a => a.area === area)
+    if (segmentFilter !== 'All') agents = agents.filter(a => a.segment === segmentFilter)
+    return agents
+  }, [data, area, segmentFilter])
 
   // Agency KPIs for selected period
   const kpis = useMemo(() => {
@@ -274,19 +356,22 @@ export default function OverviewPage() {
       .slice(0, 5)
   }, [filteredAgents, mode, monthIdx])
 
-  // High Propensity: score >= 60, not yet producing this month
-  const propensityList = useMemo(() => {
-    if (mode === 'ytd') return [] // only meaningful for monthly view
+  // All agents not yet producing this month, ranked by propensity (for "To Activate")
+  const allPropensityList = useMemo(() => {
+    if (mode === 'ytd') return []
+    const allAgents = data?.agents || []
     const currentProducers = new Set(
       filteredAgents.filter(a => getMonthCases(a, monthIdx) > 0).map(a => a.code)
     )
     return filteredAgents
       .filter(a => !currentProducers.has(a.code))
-      .map(a => ({ agent: a, score: getPropensityScore(a, monthIdx, filteredAgents) }))
-      .filter(x => x.score >= 60)
+      .map(a => ({ agent: a, score: getPropensityScore(a, monthIdx, allAgents) }))
+      .filter(x => x.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
-  }, [filteredAgents, mode, monthIdx])
+  }, [filteredAgents, data, mode, monthIdx])
+
+  // Top 4 shown on overview card (score >= 60)
+  const propensityList = useMemo(() => allPropensityList.filter(x => x.score >= 60).slice(0, 4), [allPropensityList])
 
   // MAPA breakdown
   const mapa = useMemo(() => {
@@ -367,6 +452,30 @@ export default function OverviewPage() {
           onAreaChange={setArea}
         />
 
+        {/* Segment filter */}
+        <div className="flex gap-1.5">
+          {['All', 'Rookie', 'Seasoned'].map(seg => (
+            <button
+              key={seg}
+              onClick={() => setSegmentFilter(seg)}
+              className="px-3 py-1 rounded text-xs transition-colors duration-150"
+              style={{
+                fontFamily: 'AIA Everest',
+                fontWeight: segmentFilter === seg ? 700 : 500,
+                backgroundColor: segmentFilter === seg
+                  ? (seg === 'Rookie' ? '#D31145' : seg === 'Seasoned' ? 'var(--blue,#1F78AD)' : '#1C1C28')
+                  : 'transparent',
+                color: segmentFilter === seg ? '#fff' : 'var(--char-60,#6B7180)',
+                border: `1px solid ${segmentFilter === seg
+                  ? (seg === 'Rookie' ? '#D31145' : seg === 'Seasoned' ? 'var(--blue,#1F78AD)' : '#1C1C28')
+                  : 'var(--border,#E8E9ED)'}`,
+              }}
+            >
+              {seg === 'All' ? 'All Advisors' : seg + 's'}
+            </button>
+          ))}
+        </div>
+
         {/* 2. Goal Thermometers */}
         {(monthlyFypTarget > 0 || monthlyProdTarget > 0 || monthlyCasesTarget > 0) && (
           <section>
@@ -435,11 +544,14 @@ export default function OverviewPage() {
           </div>
         </section>
 
-        {/* 5 & 6. Top Contributors + High Propensity */}
+        {/* 5 & 6. Top Contributors + To Activate */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Top Contributors */}
           <section>
-            <SectionHeader title="Top Contributors" action={{ label: 'See all', onClick: () => navigate('/agents') }} />
+            <SectionHeader
+              title="Top Contributors (FYP)"
+              action={{ label: 'See all', onClick: () => navigate('/agents') }}
+            />
             <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
               {topContributors.length === 0 ? (
                 <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
@@ -451,24 +563,39 @@ export default function OverviewPage() {
             </div>
           </section>
 
-          {/* High Propensity */}
+          {/* To Activate */}
           <section>
-            <SectionHeader title="High Propensity" />
+            <SectionHeader
+              title="To Activate"
+              action={mode !== 'ytd' && allPropensityList.length > 0
+                ? { label: `See all (${allPropensityList.length})`, onClick: () => setShowPropensityModal(true) }
+                : undefined}
+            />
             <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
               {mode === 'ytd' ? (
                 <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
-                  Switch to Monthly view to see propensity scores
+                  Switch to Monthly view to see activation opportunities
                 </p>
               ) : propensityList.length === 0 ? (
                 <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
                   No high-propensity advisors found
                 </p>
               ) : propensityList.map(({ agent, score }) => (
-                <PropensityRow key={agent.code} agent={agent} score={score} />
+                <PropensityRow key={agent.code} agent={agent} score={score} monthIdx={monthIdx} allAgents={data?.agents || []} />
               ))}
             </div>
           </section>
         </div>
+
+        {/* To Activate — full modal */}
+        {showPropensityModal && (
+          <PropensityModal
+            list={allPropensityList}
+            monthIdx={monthIdx}
+            allAgents={data?.agents || []}
+            onClose={() => setShowPropensityModal(false)}
+          />
+        )}
 
         {/* 7. MAPA Breakdown */}
         <section>
@@ -507,6 +634,7 @@ export default function OverviewPage() {
               currentMonthIdx={monthIdx}
               metric={trendMetric}
               height={160}
+              formatValue={['FYP', 'ANP', 'FYC'].includes(trendMetric) ? formatPeso : (v) => String(Math.round(v))}
             />
           </div>
         </section>

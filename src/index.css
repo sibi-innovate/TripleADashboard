@@ -1,3 +1,6 @@
+/* DM Mono — monospace utility font */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+
 /* Open Sans — official AIA digital fallback (Google Fonts) */
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
@@ -71,9 +74,18 @@
   --red-60:   #E56E8D;
   --red-40:   #ED9DB2;
   --red-20:   #F6CCD9;
-  --charcoal: #333D47;
-  --char-60:  #848A90;
-  --char-20:  #D6D8DA;
+  --charcoal: #1C1C28;
+  --char-60:  #6B7180;
+  --char-30:  #B0B3BC;
+  --char-10:  #F2F3F5;
+  --surface:  #F7F8FA;
+  --border:   #E8E9ED;
+  --blue:     #1F78AD;
+  --blue-10:  #E8F2F9;
+  --green:    #4E9A51;
+  --green-10: #EAF4EB;
+  --amber:    #C97B1A;
+  --amber-10: #FDF3E3;
   --white:    #FFFFFF;
   --offwhite: #FAFAFA;
 }
@@ -199,4 +211,20 @@ html {
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── Font Utility Classes ──────────────────────────────────────────── */
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
+
+.font-everest {
+  font-family: 'AIA Everest', 'Open Sans', sans-serif;
+}
+
+/* ─── AIA Logo Utility ──────────────────────────────────────────────── */
+.aia-logo-white {
+  content: url('/AIA Logo - White.png');
+  height: 24px;
+  width: auto;
 }

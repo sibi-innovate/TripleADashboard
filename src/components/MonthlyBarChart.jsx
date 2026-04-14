@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { MONTH_SHORT } from '../constants'
 
 // ---------------------------------------------------------------------------
 // MonthlyBarChart
@@ -30,7 +31,15 @@ export default function MonthlyBarChart({
   metricOptions = [],
   formatValue = (v) => String(v),
 }) {
-  // Reserve 24px at the top for value labels above bars
+  // Normalize: accept plain number[] or {month,value}[] interchangeably
+  const normalized = useMemo(() =>
+    data.map((d, i) =>
+      typeof d === 'number'
+        ? { month: MONTH_SHORT[i] ?? String(i + 1), value: d }
+        : d
+    ), [data])
+
+  // Reserve 24px at top for value labels above bars
   const LABEL_RESERVE = 24
   const chartHeight = height - LABEL_RESERVE
 
@@ -38,12 +47,12 @@ export default function MonthlyBarChart({
   // Compute max value across actual + target data
   // --------------------------------------------------
   const maxValue = useMemo(() => {
-    const actuals = data.map((d) => d.value ?? 0)
+    const actuals = normalized.map((d) => d.value ?? 0)
     const targets = targetData ? targetData.map((d) => d.value ?? 0) : []
     const all = [...actuals, ...targets]
     const m = Math.max(...all, 1) // at least 1 to avoid /0
     return m
-  }, [data, targetData])
+  }, [normalized, targetData])
 
   // --------------------------------------------------
   // Build target lookup by month
@@ -93,7 +102,7 @@ export default function MonthlyBarChart({
         className="flex items-end gap-1"
         style={{ height: `${height}px` }}
       >
-        {data.map((item, idx) => {
+        {normalized.map((item, idx) => {
           const isPast = idx < currentMonthIdx
           const isCurrent = idx === currentMonthIdx
           const isFuture = idx > currentMonthIdx

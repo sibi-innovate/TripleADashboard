@@ -1,724 +1,581 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
-import { formatCurrency, formatNumber } from '../utils/formatters'
-import Tag from '../components/Tag'
-import StatusIndicator from '../components/StatusIndicator'
+import AgentAvatar from '../components/AgentAvatar'
+import PhotoUpload from '../components/PhotoUpload'
+import ProgressBar from '../components/ProgressBar'
+import MonthlyBarChart from '../components/MonthlyBarChart'
+import SectionHeader from '../components/SectionHeader'
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from 'recharts'
+  MONTH_ABBRS, MONTH_SHORT, ADVISOR_TIERS, TIER_COLORS, MDRT_GOAL_DEFAULT, CURRENT_MONTH_IDX,
+} from '../constants'
+import {
+  getAgentYtdFyp, getAgentYtdFyc, getAgentYtdAnp, getAgentYtdCases,
+  calculateQuarterlyBonus, getAdvisorTier, getFycNextTierGap, formatPeso, formatPct,
+} from '../utils/calculations'
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MONTH_ABBRS  = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
-const MONTH_LABELS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const MONTH_SHORT  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const CURRENT_YEAR = new Date().getFullYear()
-const CURRENT_MONTH_IDX = new Date().getMonth()  // 0-indexed
-
-const MDRT_TARGET      = 3_518_400
-const FAST_START_CASES = 5
-const NINETY_DAYS      = 90 / 365.25
-
-// ACE Campaign 2026
-const ACE_FYC_TARGET   = 300_000
-const ACE_CASES_TARGET = 24
-const ACE_PERS_TARGET  = 85.0
-
-const FYC_TIERS = [
-  { min: 350_000, rate: 0.40, label: '₱350K+' },
-  { min: 200_000, rate: 0.35, label: '₱200K–349K' },
-  { min: 120_000, rate: 0.30, label: '₱120K–199K' },
-  { min:  80_000, rate: 0.20, label: '₱80K–119K' },
-  { min:  50_000, rate: 0.15, label: '₱50K–79K' },
-  { min:  30_000, rate: 0.10, label: '₱30K–49K' },
-  { min:       0, rate: 0.00, label: 'Below ₱30K' },
-]
-const ROOKIE_TIER = { min: 20_000, rate: 0.10, label: '₱20K–29K (Rookie)' }
-
-const CCB_TIERS = [
-  { min: 9, rate: 0.20, label: '9+ cases' },
-  { min: 7, rate: 0.15, label: '7–8 cases' },
-  { min: 5, rate: 0.10, label: '5–6 cases' },
-  { min: 3, rate: 0.05, label: '3–4 cases' },
-  { min: 0, rate: 0.00, label: '<3 cases' },
+const PROFILE_TABS = [
+  { key: 'performance',  label: 'Performance' },
+  { key: 'bonus',        label: 'Bonus' },
+  { key: 'qualifications', label: 'Qualifications' },
+  { key: 'team',         label: 'Team Impact' },
 ]
 
-const QUARTER_MONTHS = {
-  Q1: ['JAN','FEB','MAR'],
-  Q2: ['APR','MAY','JUN'],
-  Q3: ['JUL','AUG','SEP'],
-  Q4: ['OCT','NOV','DEC'],
-}
+const QUARTER_KEYS = ['Q1', 'Q2', 'Q3', 'Q4']
 
-function getCurrentQuarter() {
+function currentQuarter() {
   const m = new Date().getMonth()
-  if (m < 3) return 'Q1'
-  if (m < 6) return 'Q2'
-  if (m < 9) return 'Q3'
-  return 'Q4'
+  return QUARTER_KEYS[Math.floor(m / 3)]
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ─── Small helpers ────────────────────────────────────────────────────────────
 
-function formatApptDate(apptDateInt) {
-  if (!apptDateInt || apptDateInt < 19000101) return '—'
-  const s = String(apptDateInt)
-  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`
+function formatApptDate(v) {
+  if (!v || v < 19000101) return '—'
+  const s = String(v)
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
 }
 
-function daysSinceAppt(apptDateInt) {
-  if (!apptDateInt || apptDateInt < 19000101) return null
-  const s = String(apptDateInt)
-  const d = new Date(Number(s.slice(0,4)), Number(s.slice(4,6))-1, Number(s.slice(6,8)))
-  return Math.floor((Date.now() - d.getTime()) / 86400000)
+function YtdKpi({ label, value, delta }) {
+  const isPos = delta != null && delta > 0
+  const isNeg = delta != null && delta < 0
+  return (
+    <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide mb-1"
+        style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{label}</p>
+      <p className="text-xl font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{value}</p>
+      {delta != null && (
+        <p className="text-[10px] mt-0.5" style={{
+          fontFamily: 'DM Mono, monospace',
+          color: isPos ? 'var(--green,#4E9A51)' : isNeg ? '#D31145' : 'var(--char-60,#6B7180)',
+        }}>
+          {isPos ? '+' : ''}{typeof delta === 'number' ? formatPeso(delta) : delta} vs last year
+        </p>
+      )}
+    </div>
+  )
 }
 
-function getFycTier(fyc, isRookie) {
-  if (isRookie && fyc >= 20_000 && fyc < 30_000) return ROOKIE_TIER
-  return FYC_TIERS.find(t => fyc >= t.min) ?? FYC_TIERS[FYC_TIERS.length - 1]
+function BonusRow({ label, value, sub, highlight }) {
+  return (
+    <div className="flex items-start justify-between py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+      <div>
+        <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{label}</p>
+        {sub && <p className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{sub}</p>}
+      </div>
+      <p className="text-sm font-bold" style={{
+        fontFamily: 'DM Mono, monospace',
+        color: highlight ? '#D31145' : '#1C1C28',
+      }}>{value}</p>
+    </div>
+  )
 }
 
-function getCcbTier(cases) {
-  return CCB_TIERS.find(t => cases >= t.min) ?? CCB_TIERS[CCB_TIERS.length - 1]
+// ─── Performance Tab ──────────────────────────────────────────────────────────
+
+function PerformanceTab({ agent, agents, targets }) {
+  const [chartMetric, setChartMetric] = useState('FYP')
+  const mdrtGoal = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
+
+  const ytdFyp   = getAgentYtdFyp(agent, CURRENT_MONTH_IDX)
+  const ytdFyc   = getAgentYtdFyc(agent, CURRENT_MONTH_IDX)
+  const ytdCases = getAgentYtdCases(agent, CURRENT_MONTH_IDX)
+  const mdrtPct  = mdrtGoal > 0 ? (ytdFyp / mdrtGoal) * 100 : 0
+
+  // Projected year-end FYP at current pace
+  const monthsElapsed = CURRENT_MONTH_IDX + 1
+  const projectedYeFyp = monthsElapsed > 0 ? (ytdFyp / monthsElapsed) * 12 : 0
+
+  // Unit average comparison
+  const unitAgents = agents.filter(a => (a.unitName || a.unit) === (agent.unitName || agent.unit) && a.code !== agent.code)
+  const unitAvgFyp   = unitAgents.length > 0 ? unitAgents.reduce((s, a) => s + getAgentYtdFyp(a, CURRENT_MONTH_IDX), 0) / unitAgents.length : 0
+  const unitAvgCases = unitAgents.length > 0 ? unitAgents.reduce((s, a) => s + getAgentYtdCases(a, CURRENT_MONTH_IDX), 0) / unitAgents.length : 0
+  const maxFyp = Math.max(ytdFyp, unitAvgFyp, 1)
+  const maxCases = Math.max(ytdCases, unitAvgCases, 1)
+
+  // Chart data
+  const chartData = useMemo(() => {
+    return MONTH_ABBRS.map(abbr => {
+      const m = agent.monthly?.[abbr] || {}
+      if (chartMetric === 'FYP') return m.fyp || 0
+      if (chartMetric === 'FYC') return m.fyc || 0
+      if (chartMetric === 'Cases') return m.cases || 0
+      return 0
+    })
+  }, [agent, chartMetric])
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* YTD KPIs */}
+      <section>
+        <SectionHeader title="YTD Performance" />
+        <div className="grid grid-cols-3 gap-3 mt-3">
+          <YtdKpi label="FYP YTD" value={formatPeso(ytdFyp)} />
+          <YtdKpi label="FYC YTD" value={formatPeso(ytdFyc)} />
+          <YtdKpi label="Cases YTD" value={String(ytdCases)} />
+        </div>
+      </section>
+
+      {/* MDRT Progress */}
+      <section>
+        <SectionHeader title="MDRT Progress" />
+        <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+              {formatPeso(ytdFyp)} YTD
+            </span>
+            <span className="text-xs" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              Goal: {formatPeso(mdrtGoal)}
+            </span>
+          </div>
+          <div className="relative h-3 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+            {/* Aspirant threshold at 70% */}
+            <div className="absolute top-0 bottom-0 w-px" style={{ left: '70%', backgroundColor: 'var(--amber,#C97B1A)', zIndex: 1 }} />
+            {/* Achiever threshold at 100% */}
+            <div className="absolute top-0 bottom-0 w-px" style={{ left: '100%', backgroundColor: 'var(--green,#4E9A51)', zIndex: 1 }} />
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${Math.min(100, mdrtPct)}%`,
+                backgroundColor: mdrtPct >= 100 ? 'var(--green,#4E9A51)' : mdrtPct >= 70 ? 'var(--amber,#C97B1A)' : '#D31145',
+              }}
+            />
+          </div>
+          <div className="flex justify-between text-[9px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            <span>0%</span>
+            <span style={{ color: 'var(--amber,#C97B1A)' }}>70% Aspirant</span>
+            <span style={{ color: 'var(--green,#4E9A51)' }}>100% Achiever</span>
+          </div>
+          <p className="text-[11px] mt-2 font-semibold" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            At current pace: projected YE FYP {formatPeso(projectedYeFyp)}
+          </p>
+        </div>
+      </section>
+
+      {/* Monthly Chart */}
+      <section>
+        <div className="flex items-center justify-between">
+          <SectionHeader title="Monthly Performance" />
+          <div className="flex gap-1">
+            {['FYP', 'FYC', 'Cases'].map(m => (
+              <button
+                key={m}
+                onClick={() => setChartMetric(m)}
+                className="px-2.5 py-1 rounded text-[10px] transition-colors"
+                style={{
+                  fontFamily: 'AIA Everest', fontWeight: chartMetric === m ? 700 : 500,
+                  backgroundColor: chartMetric === m ? '#D31145' : 'transparent',
+                  color: chartMetric === m ? '#fff' : 'var(--char-60,#6B7180)',
+                  border: `1px solid ${chartMetric === m ? '#D31145' : 'var(--border,#E8E9ED)'}`,
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          <MonthlyBarChart data={chartData} currentMonthIdx={CURRENT_MONTH_IDX} metric={chartMetric} height={140} />
+        </div>
+      </section>
+
+      {/* vs Unit Average */}
+      {unitAgents.length > 0 && (
+        <section>
+          <SectionHeader title="vs. Unit Average" />
+          <div className="bg-white rounded-xl p-4 mt-3 flex flex-col gap-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            {/* FYP comparison */}
+            <div>
+              <div className="flex justify-between text-[10px] mb-1" style={{ fontFamily: 'AIA Everest' }}>
+                <span style={{ color: '#D31145', fontWeight: 700 }}>You: {formatPeso(ytdFyp)}</span>
+                <span style={{ color: 'var(--char-60,#6B7180)' }}>Unit avg: {formatPeso(unitAvgFyp)}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${(ytdFyp / maxFyp) * 100}%`, backgroundColor: '#D31145' }} />
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${(unitAvgFyp / maxFyp) * 100}%`, backgroundColor: 'var(--char-30,#B0B3BC)' }} />
+                </div>
+              </div>
+              <p className="text-[9px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>FYP YTD</p>
+            </div>
+            {/* Cases comparison */}
+            <div>
+              <div className="flex justify-between text-[10px] mb-1" style={{ fontFamily: 'AIA Everest' }}>
+                <span style={{ color: '#D31145', fontWeight: 700 }}>You: {ytdCases} cases</span>
+                <span style={{ color: 'var(--char-60,#6B7180)' }}>Unit avg: {unitAvgCases.toFixed(1)} cases</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${(ytdCases / maxCases) * 100}%`, backgroundColor: '#D31145' }} />
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${(unitAvgCases / maxCases) * 100}%`, backgroundColor: 'var(--char-30,#B0B3BC)' }} />
+                </div>
+              </div>
+              <p className="text-[9px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Cases YTD</p>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  )
 }
 
-function getPersMultiplier(pers) {
-  if (pers === null) return 1.0
-  if (pers >= 82.5)  return 1.0
-  if (pers >= 75.0)  return 0.8
-  return 0.0
-}
+// ─── Bonus Tab ────────────────────────────────────────────────────────────────
 
-function computeBonus(agent, quarter) {
+function BonusTab({ agent }) {
+  const [qtr, setQtr] = useState(currentQuarter())
   const isRookie = agent.segment === 'Rookie' && agent.agentYear === 1
-  const months   = QUARTER_MONTHS[quarter].map(abbr => agent.monthly?.[abbr] ?? {})
+  const b = calculateQuarterlyBonus(agent, qtr)
 
-  const qtlyFyc      = months.reduce((s, m) => s + (m.fyc   || 0), 0)
-  const monthlyCases = months.map(m => m.cases || 0)
-  const qtlyCases    = monthlyCases.reduce((s, c) => s + c, 0)
-  const monthsWithCases = monthlyCases.filter(c => c > 0).length
-  const ccbEligible  = monthsWithCases >= 2
+  const nextFycGap = getFycNextTierGap(b.qtlyFyc, isRookie)
 
-  const persRaw        = agent.quarterlyPers?.[quarter] ?? null
-  const persMultiplier = getPersMultiplier(persRaw)
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Quarter selector */}
+      <div className="flex gap-2">
+        {QUARTER_KEYS.map(q => (
+          <button
+            key={q}
+            onClick={() => setQtr(q)}
+            className="flex-1 py-2 rounded-lg text-xs font-bold transition-colors"
+            style={{
+              fontFamily: 'AIA Everest',
+              backgroundColor: qtr === q ? '#D31145' : '#fff',
+              color: qtr === q ? '#fff' : 'var(--char-60,#6B7180)',
+              border: `1px solid ${qtr === q ? '#D31145' : 'var(--border,#E8E9ED)'}`,
+            }}
+          >
+            {q}
+          </button>
+        ))}
+      </div>
 
-  const fycTier = getFycTier(qtlyFyc, isRookie)
-  const ccbTier = ccbEligible ? getCcbTier(qtlyCases) : CCB_TIERS[CCB_TIERS.length - 1]
+      {/* Bonus breakdown */}
+      <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+        <BonusRow label="Quarterly FYC" value={formatPeso(b.qtlyFyc)} />
+        <BonusRow label="FYC Tier" value={b.fycTier.label} sub={`${(b.fycTier.rate * 100).toFixed(0)}% rate`} />
+        <BonusRow label="FYC Bonus" value={formatPeso(b.fycBonus)} />
+        <BonusRow label="Quarterly Cases" value={String(b.qtlyCases)} />
+        <BonusRow label="CCB Tier" value={b.ccbTier.label}
+          sub={b.ccbEligible ? `${(b.ccbTier.rate * 100).toFixed(0)}% rate` : 'Need 2+ months producing'} />
+        <BonusRow label="CCB Bonus" value={formatPeso(b.ccbBonus)} />
+        <BonusRow label="Persistency" value={b.persRaw != null ? formatPct(b.persRaw) : 'N/A'}
+          sub={`×${b.persistencyMultiplier.toFixed(1)} multiplier`} />
+        <BonusRow label="Estimated Total Bonus" value={formatPeso(b.totalBonus)} highlight />
+      </div>
 
-  const fycBonus   = qtlyFyc * fycTier.rate
-  const ccbBonus   = ccbEligible ? qtlyFyc * ccbTier.rate : 0
-  const totalBonus = (fycBonus + ccbBonus) * persMultiplier
+      {/* Reach next tier nudge */}
+      {nextFycGap && (
+        <div className="rounded-xl px-4 py-3"
+          style={{ backgroundColor: 'var(--red-10,#FAE8EE)', border: '1px solid var(--red-20,#F6CCD9)' }}>
+          <p className="text-xs font-bold" style={{ fontFamily: 'AIA Everest', color: '#D31145' }}>
+            Reach next tier: {nextFycGap.nextTierLabel}
+          </p>
+          <p className="text-[11px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: '#D31145' }}>
+            {formatPeso(nextFycGap.amountNeeded)} more FYC needed this quarter
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
-  // Next tiers
-  let nextFycTier
-  if (isRookie && qtlyFyc >= 20_000 && qtlyFyc < 30_000) {
-    nextFycTier = FYC_TIERS.find(t => t.min === 30_000)
-  } else {
-    const idx = FYC_TIERS.findIndex(t => qtlyFyc >= t.min)
-    nextFycTier = idx > 0 ? FYC_TIERS[idx - 1] : null
+// ─── Qualifications Tab ───────────────────────────────────────────────────────
+
+function QualificationsTab({ agent, targets }) {
+  const mdrtGoal = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
+  const ytdFyp   = getAgentYtdFyp(agent, CURRENT_MONTH_IDX)
+  const mdrtPct  = Math.min(100, (ytdFyp / mdrtGoal) * 100)
+  const tier     = getAdvisorTier(ytdFyp, mdrtGoal)
+
+  // SVG circle progress
+  const r = 54
+  const circ = 2 * Math.PI * r
+  const dash = (mdrtPct / 100) * circ
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* MDRT Status Ring */}
+      <div className="bg-white rounded-xl p-5" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+        <SectionHeader title="MDRT Status" />
+        <div className="flex items-center gap-6 mt-4">
+          <div className="relative flex-shrink-0">
+            <svg width="128" height="128" viewBox="0 0 128 128">
+              <circle cx="64" cy="64" r={r} fill="none" stroke="var(--char-10,#F2F3F5)" strokeWidth="8" />
+              <circle
+                cx="64" cy="64" r={r}
+                fill="none"
+                stroke={mdrtPct >= 100 ? 'var(--green,#4E9A51)' : mdrtPct >= 70 ? 'var(--amber,#C97B1A)' : '#D31145'}
+                strokeWidth="8"
+                strokeDasharray={`${dash} ${circ}`}
+                strokeLinecap="round"
+                strokeDashoffset={circ / 4}
+                transform="rotate(-90 64 64)"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                {mdrtPct.toFixed(0)}%
+              </span>
+              <span className="text-[9px] font-semibold" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                of goal
+              </span>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-bold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+              {tier.label}
+            </p>
+            <p className="text-[11px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              YTD FYP: {formatPeso(ytdFyp)}
+            </p>
+            <p className="text-[11px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              MDRT Goal: {formatPeso(mdrtGoal)}
+            </p>
+            {mdrtPct < 100 && (
+              <p className="text-[11px] mt-2 font-semibold" style={{ fontFamily: 'AIA Everest', color: '#D31145' }}>
+                {formatPeso(mdrtGoal - ytdFyp)} more to MDRT Achiever
+              </p>
+            )}
+            {mdrtPct >= 100 && (
+              <p className="text-[11px] mt-2 font-bold" style={{ fontFamily: 'AIA Everest', color: 'var(--green,#4E9A51)' }}>
+                MDRT Achiever — congratulations!
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tier definitions */}
+      <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+        <p className="text-[10px] font-bold uppercase tracking-wide mb-3"
+          style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Advisor Tiers</p>
+        <div className="flex flex-col gap-1.5">
+          {ADVISOR_TIERS.map(t => (
+            <div
+              key={t.key}
+              className="flex items-center justify-between py-1.5 px-2 rounded"
+              style={{
+                backgroundColor: tier.key === t.key ? 'var(--red-10,#FAE8EE)' : 'transparent',
+              }}
+            >
+              <span className="text-xs font-semibold" style={{
+                fontFamily: 'AIA Everest',
+                color: tier.key === t.key ? '#D31145' : '#1C1C28',
+                fontWeight: tier.key === t.key ? 700 : 500,
+              }}>{t.label}</span>
+              <span className="text-[10px]" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--char-60,#6B7180)' }}>
+                {t.minPct !== null && t.maxPct !== null
+                  ? `${(t.minPct * 100).toFixed(0)}–${(t.maxPct * 100).toFixed(0)}%`
+                  : t.key === 'mdrt_achiever' ? '≥100%' : 'First year'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Team Impact Tab ──────────────────────────────────────────────────────────
+
+function TeamImpactTab({ agent, agents }) {
+  const recruits = agents.filter(a => a.recruiterCode === agent.code || a.recruiterId === agent.code)
+
+  if (recruits.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>No recruits on record</p>
+        <p className="text-xs mt-1" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+          Recruits linked by recruiter code will appear here.
+        </p>
+      </div>
+    )
   }
-  const ccbTierIdx  = CCB_TIERS.findIndex(t => qtlyCases >= t.min)
-  const nextCcbTier = ccbEligible && ccbTierIdx > 0 ? CCB_TIERS[ccbTierIdx - 1] : null
 
-  return {
-    qtlyFyc, qtlyCases, monthlyCases, ccbEligible,
-    fycTier, ccbTier, nextFycTier, nextCcbTier,
-    fycBonus, ccbBonus, totalBonus,
-    persRaw, persMultiplier,
-    monthsWithCases,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function ProgressBar({ pct, colorClass = 'bg-[#88B943]', className = '' }) {
-  const clamped = Math.min(1, Math.max(0, pct))
   return (
-    <div className={`w-full h-2 bg-gray-100 rounded-full overflow-hidden ${className}`}>
-      <div
-        className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
-        style={{ width: `${(clamped * 100).toFixed(1)}%` }}
-      />
+    <div className="flex flex-col gap-3">
+      {recruits.map(r => {
+        const ytdCases = getAgentYtdCases(r, CURRENT_MONTH_IDX)
+        const status = ytdCases >= 5 ? 'Fast Start' : ytdCases > 0 ? 'Activated' : 'Not Yet'
+        return (
+          <div
+            key={r.code}
+            className="bg-white rounded-xl p-4 flex items-center gap-3"
+            style={{ border: '1px solid var(--border,#E8E9ED)' }}
+          >
+            <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
+              style={{ backgroundColor: '#1F78AD', fontFamily: 'AIA Everest' }}>
+              {(r.name?.[0] || '?').toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{r.name}</p>
+              <p className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                {r.code} · {formatApptDate(r.apptDate)}
+              </p>
+            </div>
+            <span
+              className="text-[10px] font-bold rounded px-2 py-1 flex-shrink-0"
+              style={{
+                fontFamily: 'AIA Everest',
+                backgroundColor: status === 'Fast Start' ? 'var(--green-10,#EAF4EB)' : status === 'Activated' ? 'var(--blue-10,#E8F2F9)' : 'var(--char-10,#F2F3F5)',
+                color: status === 'Fast Start' ? 'var(--green,#4E9A51)' : status === 'Activated' ? 'var(--blue,#1F78AD)' : 'var(--char-60,#6B7180)',
+              }}
+            >
+              {status}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function SectionCard({ title, children, className = '' }) {
-  return (
-    <div className={`bg-white rounded-xl shadow px-5 py-4 ${className}`}>
-      <h2 className="text-sm font-bold uppercase tracking-widest text-[#D31145] mb-3">
-        {title}
-      </h2>
-      {children}
-    </div>
-  )
-}
-
-function SmallKpi({ label, value, sub, highlight }) {
-  return (
-    <div className={`rounded-xl px-4 py-3 border ${highlight ? 'border-[#D31145]/30 bg-[#D31145]/5' : 'border-gray-100 bg-gray-50'}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{label}</p>
-      <p className={`text-xl font-extrabold leading-tight mt-0.5 tabular-nums ${highlight ? 'text-[#D31145]' : 'text-[#333D47]'}`}>{value}</p>
-      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
-    </div>
-  )
-}
-
-function persColor(pct) {
-  if (pct == null)  return 'bg-gray-100 text-gray-400 border-transparent'
-  if (pct >= 82.5)  return 'bg-[#88B943]/15 text-[#5a8a28] border-[#88B943]/30'
-  if (pct >= 75)    return 'bg-amber-50 text-amber-700 border-amber-200'
-  return 'bg-[#D31145]/10 text-[#D31145] border-[#D31145]/20'
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+// ─── Main component ────────────────────────────────────────────────────────────
 
 export default function AgentProfilePage() {
-  const { code }           = useParams()
-  const navigate           = useNavigate()
-  const { data, isLoaded } = useData()
+  const { code }             = useParams()
+  const navigate             = useNavigate()
+  const { data, isLoaded, targets } = useData()
+  const [activeTab, setActiveTab]   = useState('performance')
 
-  const [selectedMonth,   setSelectedMonth]   = useState(MONTH_ABBRS[CURRENT_MONTH_IDX])
-  const [selectedQuarter, setSelectedQuarter] = useState(getCurrentQuarter())
+  const agent  = data?.agents?.find(a => a.code === code)
+  const agents = data?.agents || []
 
-  const agent = data?.agents?.find(a => a.code === code)
-
+  if (!isLoaded) return null
   if (!agent) {
     return (
-      <div className="min-h-screen bg-aia-gray flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow px-8 py-10 text-center max-w-sm">
-          <p className="text-gray-500 text-sm mb-4">
-            No advisor found with code <span className="font-mono font-semibold">{code}</span>.
-          </p>
-          <button onClick={() => navigate(-1)}
-            className="px-4 py-2 bg-[#D31145] text-white text-sm font-semibold rounded-lg hover:bg-[#b80e3a] transition-colors">
-            ← Back
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
+        <div className="text-center">
+          <p className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Agent not found</p>
+          <button onClick={() => navigate('/agents')} className="mt-3 text-xs text-[#D31145]" style={{ fontFamily: 'AIA Everest' }}>
+            Back to agents
           </button>
         </div>
       </div>
     )
   }
 
-  // ------------------------------------------------------------------
-  // Derived values
-  // ------------------------------------------------------------------
-
-  const isRookie   = agent.segment === 'Rookie'
-  const monthData  = agent.monthly?.[selectedMonth] ?? {}
-
-  // Months active (producing months from JAN to current month)
-  const ytdMonths      = MONTH_ABBRS.slice(0, CURRENT_MONTH_IDX + 1)
-  const monthsActive   = ytdMonths.filter(mo => agent.monthly?.[mo]?.producing).length
-  const monthsElapsed  = ytdMonths.length
-
-  // YTD totals (JAN → current month)
-  const ytdFyc   = ytdMonths.reduce((s, mo) => s + (agent.monthly?.[mo]?.fyc   || 0), 0)
-  const ytdFyp   = ytdMonths.reduce((s, mo) => s + (agent.monthly?.[mo]?.fyp   || 0), 0)
-  const ytdCases = ytdMonths.reduce((s, mo) => s + (agent.monthly?.[mo]?.cases || 0), 0)
-
-  // Average FYC per month (YTD FYC / months elapsed since Jan 1)
-  const avgFycPerMonth = monthsElapsed > 0 ? ytdFyc / monthsElapsed : 0
-
-  // YTD persistency — average of available monthly values
-  const persList = ytdMonths.map(mo => agent.monthly?.[mo]?.persistency).filter(v => v != null)
-  const ytdPersAvg = persList.length > 0 ? persList.reduce((s,v) => s+v, 0) / persList.length : null
-
-  // ACE Campaign progress
-  const aceFycPct   = Math.min(1, ytdFyc / ACE_FYC_TARGET)
-  const aceCasesPct = Math.min(1, ytdCases / ACE_CASES_TARGET)
-  const acePersPct  = ytdPersAvg != null ? Math.min(1, ytdPersAvg / ACE_PERS_TARGET) : 0
-  const aceQualified = ytdFyc >= ACE_FYC_TARGET && ytdCases >= ACE_CASES_TARGET && (ytdPersAvg ?? 0) >= ACE_PERS_TARGET
-
-  // Quarter bonus
-  const bonus = computeBonus(agent, selectedQuarter)
-
-  // MDRT
-  const mdrtPct     = MDRT_TARGET > 0 ? ytdFyp / MDRT_TARGET : 0
-  const mdrtReached = ytdFyp >= MDRT_TARGET
-
-  // 90-Day
-  const show90Day         = agent.agentYears == null || agent.agentYears <= NINETY_DAYS
-  const days90            = daysSinceAppt(agent.apptDate)
-  const cumulativeCases90 = ytdCases
-  const fastStart         = cumulativeCases90 >= FAST_START_CASES
-
-  // Chart data
-  const rawChartMonths = MONTH_ABBRS.slice(0, CURRENT_MONTH_IDX + 1)
-  let lastDataIdx = -1
-  for (let i = rawChartMonths.length - 1; i >= 0; i--) {
-    const m = agent.monthly?.[rawChartMonths[i]]
-    if (m && (m.fyp || m.fyc || m.cases)) { lastDataIdx = i; break }
-  }
-  const chartMonths = lastDataIdx >= 0 ? rawChartMonths.slice(0, lastDataIdx + 1) : rawChartMonths
-  const chartData = chartMonths.map(abbr => {
-    const m = agent.monthly?.[abbr] || {}
-    return {
-      month: MONTH_SHORT[MONTH_ABBRS.indexOf(abbr)],
-      FYP:   m.fyp   || 0,
-      FYC:   m.fyc   || 0,
-      Cases: (m.cases || 0) * 1000,
-    }
-  })
-
-  // ------------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------------
+  const mdrtGoal  = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
+  const ytdFyp    = getAgentYtdFyp(agent, CURRENT_MONTH_IDX)
+  const advisorTier = getAdvisorTier(ytdFyp, mdrtGoal)
 
   return (
-    <div className="min-h-screen bg-aia-gray">
-      <div className="max-w-screen-xl mx-auto px-4 py-8 space-y-5">
+    <div className="min-h-screen pb-4" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
 
-        {/* ── 1. HEADER */}
-        <div className="bg-white rounded-xl shadow px-5 py-4">
-          <button onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#D31145] hover:text-[#b80e3a] transition-colors mb-3">
-            ← Back
+      {/* Hero */}
+      <div className="bg-white" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+        <div className="max-w-screen-xl mx-auto px-4 pt-5 pb-0">
+          {/* Back */}
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-xs mb-4"
+            style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M9 3L5 7l4 4" />
+            </svg>
+            Back
           </button>
-          <div className="flex flex-wrap items-center gap-3 mb-1">
-            <h1 className="text-2xl font-extrabold text-[#333D47] tracking-tight leading-tight">{agent.name}</h1>
-            <Tag variant={isRookie ? 'rookie' : 'seasoned'}>{agent.segment ?? 'Unknown'}</Tag>
-            {agent.isProducing
-              ? <StatusIndicator status="positive" label="Producing" />
-              : <StatusIndicator status="neutral"  label="Non-Producing" />
-            }
-          </div>
-          <p className="text-xs font-mono text-gray-400 mb-2">{agent.code}</p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-            {agent.area     && <span><span className="font-semibold text-gray-700">Area:</span> {agent.area}</span>}
-            {agent.unitName && <span><span className="font-semibold text-gray-700">Unit:</span> {agent.unitName}</span>}
-            <span><span className="font-semibold text-gray-700">Agent Year:</span> {agent.agentYear ?? '—'}</span>
-            <span><span className="font-semibold text-gray-700">Appointed:</span> {formatApptDate(agent.apptDate)}</span>
-            {agent.recruiterName && (
-              <span>
-                <span className="font-semibold text-gray-700">Recruited by:</span> {agent.recruiterName}
-                {agent.recruiterCode && <span className="text-gray-400 ml-1 font-mono">({agent.recruiterCode})</span>}
-              </span>
-            )}
-          </div>
-        </div>
 
-        {/* ── 2. MONTH SELECTOR + MONTHS ACTIVE */}
-        <div className="bg-white rounded-xl shadow px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">View Month</p>
-              <div className="flex flex-wrap gap-1">
-                {MONTH_ABBRS.slice(0, CURRENT_MONTH_IDX + 1).map(abbr => {
-                  const hasProd = agent.monthly?.[abbr]?.producing
-                  return (
-                    <button
-                      key={abbr}
-                      onClick={() => setSelectedMonth(abbr)}
-                      className={[
-                        'px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors border',
-                        selectedMonth === abbr
-                          ? 'bg-[#D31145] text-white border-[#D31145]'
-                          : hasProd
-                          ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                          : 'text-gray-400 border-gray-200 hover:bg-gray-50',
-                      ].join(' ')}
-                    >
-                      {MONTH_SHORT[MONTH_ABBRS.indexOf(abbr)].slice(0,3)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="text-center">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Months Active</p>
-                <p className="text-2xl font-extrabold text-[#333D47]">
-                  {monthsActive}
-                  <span className="text-sm text-gray-400 font-medium"> / {monthsElapsed}</span>
-                </p>
-                <p className="text-[10px] text-gray-400">
-                  {monthsElapsed > 0 ? `${Math.round(monthsActive / monthsElapsed * 100)}% activity rate` : ''}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 3. MONTHLY QUICK STATS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SmallKpi
-            label={`FYC — ${MONTH_SHORT[MONTH_ABBRS.indexOf(selectedMonth)]}`}
-            value={formatCurrency(monthData.fyc || 0, true)}
-            highlight={!!monthData.fyc}
-          />
-          <SmallKpi
-            label={`FYP — ${MONTH_SHORT[MONTH_ABBRS.indexOf(selectedMonth)]}`}
-            value={formatCurrency(monthData.fyp || 0, true)}
-          />
-          <SmallKpi
-            label={`Cases — ${MONTH_SHORT[MONTH_ABBRS.indexOf(selectedMonth)]}`}
-            value={formatNumber(monthData.cases || 0)}
-          />
-          <SmallKpi
-            label={`Producing — ${MONTH_SHORT[MONTH_ABBRS.indexOf(selectedMonth)]}`}
-            value={monthData.producing ? 'Yes' : 'No'}
-            highlight={!!monthData.producing}
-          />
-        </div>
-
-        {/* ── 4. YTD SUMMARY + AVERAGE FYC */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SmallKpi label="YTD FYC"             value={formatCurrency(ytdFyc, true)} />
-          <SmallKpi label="YTD FYP"             value={formatCurrency(ytdFyp, true)} />
-          <SmallKpi label="YTD Cases"           value={formatNumber(ytdCases)} />
-          <SmallKpi
-            label="Avg FYC / Month"
-            value={formatCurrency(avgFycPerMonth, true)}
-            sub={`Total ÷ ${monthsElapsed} months`}
-          />
-        </div>
-
-        {/* ── 5. ACE CAMPAIGN 2026 */}
-        <SectionCard title={`2026 Agency ACE Campaign${aceQualified ? ' ✅' : ''}`}>
-          <p className="text-xs text-gray-400 mb-4">Jan 1 – Dec 31, 2026 · Targets: ₱300K FYC · 24 Cases · 85% Persistency</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-
-            {/* FYC */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-gray-600">FYC</span>
-                <span className="tabular-nums text-gray-500">
-                  {formatCurrency(ytdFyc, true)} / {formatCurrency(ACE_FYC_TARGET, true)}
-                </span>
-              </div>
-              <ProgressBar
-                pct={aceFycPct}
-                colorClass={ytdFyc >= ACE_FYC_TARGET ? 'bg-[#88B943]' : 'bg-[#D31145]'}
-                className="mb-1"
-              />
-              {ytdFyc >= ACE_FYC_TARGET
-                ? <p className="text-[11px] text-[#5a8a28] font-bold">✅ Qualified</p>
-                : <p className="text-[11px] text-gray-400">{formatCurrency(ACE_FYC_TARGET - ytdFyc, true)} remaining · {(aceFycPct*100).toFixed(1)}%</p>
-              }
+          {/* Profile row */}
+          <div className="flex items-start gap-4 mb-4">
+            {/* Avatar with photo upload overlay */}
+            <div className="relative flex-shrink-0">
+              <AgentAvatar agentCode={agent.code} name={agent.name} size={64} tierKey={advisorTier.key} />
+              <PhotoUpload agentCode={agent.code} agentName={agent.name} onSuccess={() => {}} />
             </div>
 
-            {/* Cases */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-gray-600">Policy Count</span>
-                <span className="tabular-nums text-gray-500">{ytdCases} / {ACE_CASES_TARGET}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div>
+                  <h1 className="text-lg font-extrabold leading-tight" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+                    {agent.name}
+                  </h1>
+                  <p className="text-[11px] mt-0.5" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--char-60,#6B7180)' }}>
+                    {agent.code}
+                  </p>
+                </div>
+                {/* MDRT badge */}
+                {(advisorTier.key === 'mdrt_aspirant' || advisorTier.key === 'mdrt_achiever') && (
+                  <span
+                    className="text-[10px] font-bold rounded-full px-2.5 py-1 flex-shrink-0"
+                    style={{
+                      fontFamily: 'AIA Everest',
+                      backgroundColor: advisorTier.key === 'mdrt_achiever' ? 'var(--green-10,#EAF4EB)' : 'var(--amber-10,#FDF3E3)',
+                      color: advisorTier.key === 'mdrt_achiever' ? 'var(--green,#4E9A51)' : 'var(--amber,#C97B1A)',
+                      border: `1px solid ${advisorTier.key === 'mdrt_achiever' ? 'var(--green,#4E9A51)' : 'var(--amber,#C97B1A)'}`,
+                    }}
+                  >
+                    {advisorTier.label}
+                  </span>
+                )}
               </div>
-              <ProgressBar
-                pct={aceCasesPct}
-                colorClass={ytdCases >= ACE_CASES_TARGET ? 'bg-[#88B943]' : 'bg-[#D31145]'}
-                className="mb-1"
-              />
-              {ytdCases >= ACE_CASES_TARGET
-                ? <p className="text-[11px] text-[#5a8a28] font-bold">✅ Qualified</p>
-                : <p className="text-[11px] text-gray-400">{ACE_CASES_TARGET - ytdCases} more cases · {(aceCasesPct*100).toFixed(1)}%</p>
-              }
-            </div>
 
-            {/* Persistency */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-gray-600">Persistency</span>
-                <span className="tabular-nums text-gray-500">
-                  {ytdPersAvg != null ? `${ytdPersAvg.toFixed(1)}%` : '—'} / {ACE_PERS_TARGET}%
-                </span>
+              {/* Pills */}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {agent.segment && (
+                  <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                    style={{
+                      fontFamily: 'AIA Everest',
+                      backgroundColor: agent.segment === 'Seasoned' ? 'var(--blue-10,#E8F2F9)' : 'var(--red-10,#FAE8EE)',
+                      color: agent.segment === 'Seasoned' ? 'var(--blue,#1F78AD)' : '#D31145',
+                    }}>
+                    {agent.segment}
+                  </span>
+                )}
+                {advisorTier.key !== 'mdrt_aspirant' && advisorTier.key !== 'mdrt_achiever' && (
+                  <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                    style={{ fontFamily: 'AIA Everest', backgroundColor: 'var(--char-10,#F2F3F5)', color: '#1C1C28' }}>
+                    {advisorTier.abbr}
+                  </span>
+                )}
+                {(agent.unitName || agent.unit) && (
+                  <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                    style={{ fontFamily: 'AIA Everest', backgroundColor: 'var(--char-10,#F2F3F5)', color: '#1C1C28' }}>
+                    {agent.unitName || agent.unit}
+                  </span>
+                )}
+                {agent.area && (
+                  <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                    style={{ fontFamily: 'AIA Everest', backgroundColor: 'var(--char-10,#F2F3F5)', color: '#1C1C28' }}>
+                    {agent.area}
+                  </span>
+                )}
               </div>
-              <ProgressBar
-                pct={acePersPct}
-                colorClass={(ytdPersAvg ?? 0) >= ACE_PERS_TARGET ? 'bg-[#88B943]' : 'bg-amber-400'}
-                className="mb-1"
-              />
-              {ytdPersAvg == null
-                ? <p className="text-[11px] text-gray-400">No persistency data</p>
-                : (ytdPersAvg >= ACE_PERS_TARGET)
-                ? <p className="text-[11px] text-[#5a8a28] font-bold">✅ Qualified</p>
-                : <p className="text-[11px] text-gray-400">Need {(ACE_PERS_TARGET - ytdPersAvg).toFixed(1)}% more · avg of monthly</p>
-              }
             </div>
-
           </div>
 
-          {aceQualified && (
-            <div className="mt-4 px-4 py-3 bg-[#88B943]/10 border border-[#88B943]/30 rounded-xl text-center">
-              <p className="text-sm font-extrabold text-[#5a8a28]">🏆 ACE Campaign Qualified!</p>
-              <p className="text-xs text-[#5a8a28]/70 mt-0.5">All three targets met for 2026</p>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* ── 6. QUARTER BONUS */}
-        <SectionCard title="Quarter Bonus Progress">
-          {/* Quarter selector */}
-          <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 self-start inline-flex">
-            {['Q1','Q2','Q3','Q4'].map(q => (
+          {/* Sub-tabs */}
+          <div className="flex gap-0 -mb-px overflow-x-auto scrollbar-none">
+            {PROFILE_TABS.map(tab => (
               <button
-                key={q}
-                onClick={() => setSelectedQuarter(q)}
-                className={[
-                  'px-4 py-1.5 rounded-md text-sm font-bold transition-colors',
-                  selectedQuarter === q ? 'bg-[#D31145] text-white shadow-sm' : 'text-gray-500 hover:bg-white',
-                ].join(' ')}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="px-4 py-2.5 text-xs whitespace-nowrap flex-shrink-0 transition-colors"
+                style={{
+                  fontFamily: 'AIA Everest',
+                  fontWeight: activeTab === tab.key ? 700 : 500,
+                  color: activeTab === tab.key ? '#D31145' : 'var(--char-60,#6B7180)',
+                  borderBottom: activeTab === tab.key ? '2px solid #D31145' : '2px solid transparent',
+                }}
               >
-                {q}
+                {tab.label}
               </button>
             ))}
           </div>
+        </div>
+      </div>
 
-          {/* Quarter months breakdown */}
-          <div className="flex gap-2 mb-4">
-            {QUARTER_MONTHS[selectedQuarter].map((abbr, i) => (
-              <div key={abbr} className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-100">
-                <p className="text-[10px] font-bold text-gray-400 uppercase">{abbr}</p>
-                <p className="text-sm font-extrabold text-[#333D47] tabular-nums">
-                  {formatCurrency(agent.monthly?.[abbr]?.fyc || 0, true)}
-                </p>
-                <p className="text-[10px] text-gray-400">{agent.monthly?.[abbr]?.cases || 0} cases</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-            {/* FYC Bonus */}
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#1F78AD] mb-3">FYC Bonus</p>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-500">Quarter FYC</span>
-                <span className="font-bold tabular-nums">{formatCurrency(bonus.qtlyFyc, true)}</span>
-              </div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-500">Tier</span>
-                <span className="font-bold text-[#1F78AD]">{bonus.fycTier.label}</span>
-              </div>
-              <div className="flex justify-between text-xs mb-3">
-                <span className="text-gray-500">Rate</span>
-                <span className="font-bold">{(bonus.fycTier.rate*100).toFixed(0)}%</span>
-              </div>
-              <div className="border-t border-gray-200 pt-3 mb-3">
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold text-gray-600">FYC Bonus</span>
-                  <span className="font-extrabold text-[#333D47] tabular-nums">{formatCurrency(bonus.fycBonus, true)}</span>
-                </div>
-              </div>
-              {bonus.nextFycTier ? (
-                <>
-                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                    <span>Progress to {bonus.nextFycTier.label}</span>
-                    <span>{formatCurrency(bonus.nextFycTier.min - bonus.qtlyFyc, true)} away</span>
-                  </div>
-                  <ProgressBar
-                    pct={(bonus.qtlyFyc - bonus.fycTier.min) / (bonus.nextFycTier.min - bonus.fycTier.min)}
-                    colorClass="bg-[#1F78AD]"
-                  />
-                </>
-              ) : (
-                <p className="text-[11px] text-[#88B943] font-bold">✅ Highest FYC tier</p>
-              )}
-            </div>
-
-            {/* Case Count Bonus (CCB) */}
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#88B943] mb-3">Case Count Bonus (CCB)</p>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-500">Quarter Cases</span>
-                <span className="font-bold tabular-nums">{bonus.qtlyCases}</span>
-              </div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-500">Months with Cases</span>
-                <span className={`font-bold ${bonus.ccbEligible ? 'text-[#88B943]' : 'text-amber-600'}`}>
-                  {bonus.monthsWithCases} / 3
-                  {!bonus.ccbEligible && ' (need 2+)'}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs mb-3">
-                <span className="text-gray-500">CCB Rate</span>
-                <span className="font-bold">{(bonus.ccbTier.rate*100).toFixed(0)}%</span>
-              </div>
-              <div className="border-t border-gray-200 pt-3 mb-3">
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold text-gray-600">CCB Bonus</span>
-                  <span className="font-extrabold text-[#333D47] tabular-nums">{formatCurrency(bonus.ccbBonus, true)}</span>
-                </div>
-              </div>
-              {bonus.ccbEligible && bonus.nextCcbTier ? (
-                <>
-                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                    <span>Progress to {bonus.nextCcbTier.label}</span>
-                    <span>{bonus.nextCcbTier.min - bonus.qtlyCases} more cases</span>
-                  </div>
-                  <ProgressBar
-                    pct={(bonus.qtlyCases - bonus.ccbTier.min) / (bonus.nextCcbTier.min - bonus.ccbTier.min)}
-                    colorClass="bg-[#88B943]"
-                  />
-                </>
-              ) : !bonus.ccbEligible ? (
-                <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                  Need cases in at least 2 months to unlock CCB
-                </p>
-              ) : (
-                <p className="text-[11px] text-[#88B943] font-bold">✅ Highest CCB tier</p>
-              )}
-            </div>
-          </div>
-
-          {/* Total bonus + persistency multiplier */}
-          <div className="mt-4 flex flex-wrap gap-3 items-center justify-between bg-[#333D47]/5 rounded-xl px-4 py-3">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Total {selectedQuarter} Bonus</p>
-              <p className="text-2xl font-extrabold text-[#333D47] tabular-nums">{formatCurrency(bonus.totalBonus, true)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Persistency Multiplier</p>
-              <p className={`text-lg font-extrabold tabular-nums ${bonus.persMultiplier === 1 ? 'text-[#88B943]' : bonus.persMultiplier === 0.8 ? 'text-amber-600' : 'text-[#D31145]'}`}>
-                {(bonus.persMultiplier * 100).toFixed(0)}%
-                {bonus.persRaw != null && <span className="text-xs font-normal text-gray-400 ml-1">({bonus.persRaw.toFixed(1)}% pers)</span>}
-              </p>
-            </div>
-          </div>
-
-          {isRookie && (
-            <p className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Year-1 Rookie: An additional tier applies — ₱20K–₱29K FYC qualifies at 10% bonus rate.
-            </p>
-          )}
-        </SectionCard>
-
-        {/* ── 7. MDRT PROGRESS */}
-        <SectionCard title="MDRT Progress">
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
-            <div>
-              <p className="text-xs text-gray-400 mb-0.5">YTD FYP</p>
-              <p className="text-xl font-extrabold text-[#333D47]">{formatCurrency(ytdFyp)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-400 mb-0.5">MDRT Target</p>
-              <p className="text-xl font-extrabold text-[#333D47]">{formatCurrency(MDRT_TARGET)}</p>
-            </div>
-          </div>
-          <ProgressBar
-            pct={mdrtPct}
-            colorClass={mdrtReached ? 'bg-[#88B943]' : mdrtPct >= 0.5 ? 'bg-amber-400' : 'bg-[#D31145]'}
-            className="mb-2"
-          />
-          <div className="flex items-center justify-between text-xs">
-            <span className={mdrtReached ? 'text-[#5a8a28] font-bold' : mdrtPct >= 0.5 ? 'text-amber-600 font-semibold' : 'text-[#D31145] font-semibold'}>
-              {mdrtReached ? '✅ MDRT Qualified!' : `Gap: ${formatCurrency(MDRT_TARGET - ytdFyp)} remaining`}
-            </span>
-            <span className="text-gray-400 font-semibold tabular-nums">{(mdrtPct*100).toFixed(1)}% of target</span>
-          </div>
-        </SectionCard>
-
-        {/* ── 8. PERSISTENCY */}
-        <SectionCard title="Persistency">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Monthly</p>
-          <div className="flex flex-wrap gap-2 mb-5">
-            {MONTH_ABBRS.map((abbr) => {
-              const v = agent.monthly?.[abbr]?.persistency ?? null
-              return (
-                <div
-                  key={abbr}
-                  className={`inline-flex flex-col items-center px-2.5 py-1.5 rounded-lg text-[10px] font-semibold min-w-[44px] border ${persColor(v)}`}
-                >
-                  <span className="uppercase tracking-wider opacity-70">{abbr}</span>
-                  <span className="text-xs font-bold mt-0.5">{v != null ? `${v.toFixed(1)}%` : '—'}</span>
-                </div>
-              )
-            })}
-          </div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Quarterly</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {['Q1','Q2','Q3','Q4'].map(q => {
-              const pct = agent.quarterlyPers?.[q] ?? null
-              return (
-                <div key={q} className={`flex flex-col items-center px-3 py-3 rounded-xl border text-center ${persColor(pct)}`}>
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">{q}</span>
-                  <span className="text-lg font-extrabold">{pct != null ? `${pct.toFixed(1)}%` : '—'}</span>
-                </div>
-              )
-            })}
-          </div>
-          {ytdPersAvg != null && (
-            <div className="mt-3 text-xs text-gray-400 text-right">
-              YTD avg persistency: <span className={`font-bold ${ytdPersAvg >= 82.5 ? 'text-[#5a8a28]' : ytdPersAvg >= 75 ? 'text-amber-600' : 'text-[#D31145]'}`}>{ytdPersAvg.toFixed(1)}%</span>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* ── 9. MONTHLY PRODUCTION CHART */}
-        <SectionCard title="Monthly Production Chart">
-          {chartData.length === 0 ? (
-            <p className="text-sm text-gray-400 py-6 text-center">No monthly data available.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%" barGap={2}>
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#848A90' }} axisLine={false} tickLine={false} />
-                <YAxis
-                  tick={{ fontSize: 10, fill: '#848A90' }} axisLine={false} tickLine={false} width={54}
-                  tickFormatter={v => v >= 1_000_000 ? `₱${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `₱${(v/1000).toFixed(0)}K` : v}
-                />
-                <Tooltip
-                  formatter={(value, name) => name === 'Cases' ? [(value/1000).toFixed(0), 'Cases'] : [formatCurrency(value, true), name]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: '#E5E7EB' }}
-                  cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} formatter={v => v === 'Cases' ? 'Cases (×1000)' : v} />
-                <Bar dataKey="FYP"   fill="#D31145" radius={[3,3,0,0]} />
-                <Bar dataKey="FYC"   fill="#1F78AD" radius={[3,3,0,0]} />
-                <Bar dataKey="Cases" fill="#88B943" radius={[3,3,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-
-        {/* ── 10. 90-DAY (new agents only) */}
-        {show90Day && (
-          <SectionCard title="90 Day Ascent Status">
-            <div className="flex flex-wrap items-start gap-6 mb-4">
-              <div>
-                <p className="text-xs text-gray-400 mb-0.5">Days Since Appointment</p>
-                <p className="text-xl font-extrabold text-[#333D47]">{days90 != null ? `${days90} days` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-0.5">Cumulative Cases (YTD)</p>
-                <p className="text-xl font-extrabold text-[#333D47]">{cumulativeCases90}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-0.5">Fast Start Status</p>
-                <p className={`text-sm font-extrabold ${fastStart ? 'text-[#88B943]' : 'text-gray-400'}`}>
-                  {fastStart ? '⭐ FAST START Qualifier' : 'Not Yet'}
-                </p>
-              </div>
-            </div>
-            <div className="mb-1 flex justify-between text-xs text-gray-400">
-              <span>Cases toward Fast Start</span>
-              <span>{Math.min(cumulativeCases90, FAST_START_CASES)} / {FAST_START_CASES}</span>
-            </div>
-            <ProgressBar
-              pct={cumulativeCases90 / FAST_START_CASES}
-              colorClass={fastStart ? 'bg-[#88B943]' : 'bg-[#D31145]'}
-            />
-            {!fastStart && (
-              <p className="mt-2 text-xs text-gray-400">
-                {FAST_START_CASES - cumulativeCases90} more {FAST_START_CASES - cumulativeCases90 === 1 ? 'case' : 'cases'} needed to qualify.
-              </p>
-            )}
-          </SectionCard>
-        )}
-
+      {/* Tab content */}
+      <div className="max-w-screen-xl mx-auto px-4 py-5">
+        {activeTab === 'performance'    && <PerformanceTab agent={agent} agents={agents} targets={targets} />}
+        {activeTab === 'bonus'          && <BonusTab agent={agent} />}
+        {activeTab === 'qualifications' && <QualificationsTab agent={agent} targets={targets} />}
+        {activeTab === 'team'           && <TeamImpactTab agent={agent} agents={agents} />}
       </div>
     </div>
   )

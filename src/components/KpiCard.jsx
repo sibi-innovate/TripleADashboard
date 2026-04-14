@@ -2,13 +2,16 @@
  * KpiCard — premium metric display card for the AIA Agency Dashboard.
  *
  * Props:
- *   title     {string}                       — e.g. "ANP MTD"
- *   value     {string|number}                — e.g. "₱4,250,000" or 142
- *   subtitle  {string}                       — optional secondary line, e.g. "vs last month: +12%"
- *   trend     {'up'|'down'|'neutral'}        — optional trend arrow with color
- *   color     {'red'|'blue'|'green'|'gray'}  — accent color (default 'red')
- *   icon      {string}                       — optional emoji / unicode icon in top-right
- *   className {string}                       — optional extra classes on the outer wrapper
+ *   title      {string}                          — e.g. "ANP MTD"
+ *   value      {string|number}                   — e.g. "₱4,250,000" or 142
+ *   subtitle   {string}                          — optional secondary line, e.g. "vs last month: +12%"
+ *   trend      {Object|string}                   — optional trend arrow with color
+ *     - new format: { value: string, direction: 'up'|'down'|'flat' }
+ *     - legacy format: 'up'|'down'|'neutral'
+ *   color      {'red'|'blue'|'green'|'gray'}     — accent color (default 'red')
+ *   icon       {string}                          — optional emoji / unicode icon in top-right
+ *   monospace  {boolean}                         — if true, render value in DM Mono monospace font
+ *   className  {string}                          — optional extra classes on the outer wrapper
  */
 
 const ACCENT_COLORS = {
@@ -33,6 +36,58 @@ const TREND_CONFIG = {
   },
 };
 
+// SVG icons for new trend format
+const TREND_ICONS = {
+  up: (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  ),
+  down: (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <polyline points="18 9 12 15 6 9" />
+    </svg>
+  ),
+  flat: (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  ),
+};
+
+const TREND_COLORS = {
+  up: 'text-[#4E9A51]',   // green
+  down: 'text-[#D31145]', // red
+  flat: 'text-[#B0B3BC]', // char-30
+};
+
 export default function KpiCard({
   title,
   value,
@@ -40,10 +95,28 @@ export default function KpiCard({
   trend,
   color = 'red',
   icon,
+  monospace = false,
   className = '',
 }) {
   const accentClass = ACCENT_COLORS[color] ?? ACCENT_COLORS.red;
-  const trendMeta = trend ? TREND_CONFIG[trend] : null;
+
+  // Handle both legacy (string) and new (object) trend formats
+  const trendMeta = trend
+    ? typeof trend === 'string'
+      ? TREND_CONFIG[trend]
+      : null
+    : null;
+
+  // Parse new trend object format
+  const newTrendMeta =
+    trend && typeof trend === 'object' && trend.value && trend.direction
+      ? {
+          value: trend.value,
+          direction: trend.direction,
+          icon: TREND_ICONS[trend.direction],
+          colorClass: TREND_COLORS[trend.direction],
+        }
+      : null;
 
   return (
     <div
@@ -83,11 +156,29 @@ export default function KpiCard({
       </div>
 
       {/* Primary value */}
-      <div className="text-2xl font-bold text-[#333D47] leading-tight truncate tabular-nums">
+      <div
+        className={[
+          'text-2xl font-bold text-[#333D47] leading-tight truncate tabular-nums',
+          monospace && 'font-mono',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         {value !== null && value !== undefined && value !== '' ? value : '\u2014'}
       </div>
 
-      {/* Subtitle + trend indicator */}
+      {/* Trend arrow (new format: below value) */}
+      {newTrendMeta && (
+        <div
+          className={`text-[10px] font-semibold flex items-center gap-1 mt-1 ${newTrendMeta.colorClass}`}
+          aria-label={`Trend: ${newTrendMeta.value} ${newTrendMeta.direction}`}
+        >
+          {newTrendMeta.icon}
+          <span>{newTrendMeta.value}</span>
+        </div>
+      )}
+
+      {/* Subtitle + legacy trend indicator */}
       {(subtitle || trendMeta) && (
         <div className="flex items-center gap-1.5 mt-0.5">
           {trendMeta && (

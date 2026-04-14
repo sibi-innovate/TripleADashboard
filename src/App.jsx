@@ -13,8 +13,7 @@ import TargetsPage from './pages/TargetsPage'
 import AwardsPage from './pages/AwardsPage'
 import AgentProfilePage from './pages/AgentProfilePage'
 import UnitProfilePage from './pages/UnitProfilePage'
-import BulletinPage from './pages/BulletinPage'
-import HighlightsPage from './pages/HighlightsPage'
+import RecognitionPage from './pages/RecognitionPage'
 
 // Redirects to / if data is not loaded; shows nothing while Supabase is loading
 function RequireData({ children }) {
@@ -64,8 +63,9 @@ export default function App() {
           <Route path="/awards"          element={<WithNavbar><AwardsPage /></WithNavbar>} />
           <Route path="/agent/:code"     element={<WithNavbar><AgentProfilePage /></WithNavbar>} />
           <Route path="/unit/:unitCode"  element={<WithNavbar><UnitProfilePage /></WithNavbar>} />
-          <Route path="/bulletin"        element={<WithNavbar><BulletinPage /></WithNavbar>} />
-          <Route path="/highlights"      element={<WithNavbar><HighlightsPage /></WithNavbar>} />
+          <Route path="/recognition/*"   element={<WithNavbar><RecognitionPage /></WithNavbar>} />
+          <Route path="/bulletin"        element={<Navigate to="/recognition" replace />} />
+          <Route path="/highlights"      element={<Navigate to="/recognition" replace />} />
           <Route path="*"               element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

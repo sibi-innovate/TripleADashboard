@@ -1,140 +1,237 @@
-import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { supabase } from '../lib/supabase';
+import { CURRENT_MONTH_IDX, MONTH_ABBRS } from '../constants';
 
-const NAV_LINKS = [
-  { label: 'Overview', to: '/overview' },
-  { label: 'Leaderboard', to: '/leaderboard' },
-  { label: 'Quarter Bonuses', to: '/quarterly-bonus' },
-  { label: '90 Day Ascent', to: '/activation' },
-  { label: 'Units', to: '/units' },
-  { label: 'Agents', to: '/agents' },
-  { label: 'Targets', to: '/targets' },
-  { label: 'Awards', to: '/awards' },
-  { label: 'Bulletin', to: '/bulletin' },
-  { label: 'Highlights', to: '/highlights' },
+// SVG icon set — AIA Qi monoline style, 16×16 viewBox
+const Icons = {
+  overview: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="1" width="6" height="6" rx="1" />
+      <rect x="9" y="1" width="6" height="6" rx="1" />
+      <rect x="1" y="9" width="6" height="6" rx="1" />
+      <rect x="9" y="9" width="6" height="6" rx="1" />
+    </svg>
+  ),
+  team: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="5" r="2.5" />
+      <path d="M1 14c0-2.761 2.239-5 5-5s5 2.239 5 5" />
+      <circle cx="12" cy="5" r="2" />
+      <path d="M15 14c0-2.209-1.343-4-3-4" />
+    </svg>
+  ),
+  rankings: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1,12 5,7 9,9 15,3" />
+      <polyline points="11,3 15,3 15,7" />
+    </svg>
+  ),
+  targets: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6.5" />
+      <circle cx="8" cy="8" r="3.5" />
+      <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  recognition: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="8,1.5 10.09,6.26 15.27,6.9 11.5,10.47 12.55,15.6 8,13 3.45,15.6 4.5,10.47 0.73,6.9 5.91,6.26" />
+    </svg>
+  ),
+  more: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="3" cy="8" r="1" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  upload: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 1v8M4 4l3-3 3 3M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2" />
+    </svg>
+  ),
+};
+
+// Tab definitions
+const TABS = [
+  { key: 'overview',     label: 'Overview',    icon: Icons.overview,     path: '/overview',       activePaths: ['/overview'] },
+  { key: 'team',         label: 'Team',         icon: Icons.team,         path: '/agents',         activePaths: ['/agents', '/units', '/activation'] },
+  { key: 'rankings',     label: 'Rankings',     icon: Icons.rankings,     path: '/leaderboard',    activePaths: ['/leaderboard'] },
+  { key: 'targets',      label: 'Targets',      icon: Icons.targets,      path: '/targets',        activePaths: ['/targets'] },
+  { key: 'recognition',  label: 'Recognition',  icon: Icons.recognition,  path: '/recognition',    activePaths: ['/recognition'], badge: true },
+  { key: 'more',         label: 'More',         icon: Icons.more,         path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
 ];
+
+// Bottom nav (5 items, condensed)
+const BOTTOM_TABS = [
+  { key: 'overview',    label: 'Overview',    icon: Icons.overview,    path: '/overview',    activePaths: ['/overview'] },
+  { key: 'team',        label: 'Team',        icon: Icons.team,        path: '/agents',      activePaths: ['/agents', '/units', '/activation'] },
+  { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard', activePaths: ['/leaderboard'] },
+  { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/targets',     activePaths: ['/targets'] },
+  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition', activePaths: ['/recognition'], badge: true },
+];
+
+function isTabActive(tab, pathname) {
+  return tab.activePaths.some(p => pathname === p || pathname.startsWith(p + '/'));
+}
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const { clearData } = useData();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  const { agents } = useData();
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const handleUploadNew = () => {
-    navigate('/', { state: { intentUpload: true } });
-  };
+  // Badge count: birthdays + new advisors this month
+  const badgeCount = agents ? (() => {
+    const currentAbbr = MONTH_ABBRS[CURRENT_MONTH_IDX];
+    let count = 0;
+    agents.forEach(a => {
+      // New advisors this month
+      if (a.appointmentDate) {
+        const d = new Date(a.appointmentDate);
+        if (!isNaN(d) && d.getMonth() === CURRENT_MONTH_IDX) count++;
+      }
+      // Birthdays this month
+      if (a.birthDate) {
+        const d = new Date(a.birthDate);
+        if (!isNaN(d) && d.getMonth() === CURRENT_MONTH_IDX) count++;
+      }
+    });
+    return count;
+  })() : 0;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setIsAdmin(!!data?.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsAdmin(!!session?.user);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleUpload = () => navigate('/', { state: { intentUpload: true } });
 
   return (
-    <nav
-      className="w-full sticky top-0 z-50"
-      style={{
-        backgroundColor: '#D31145',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
-    >
-      <div className="max-w-screen-xl mx-auto px-5 h-14 flex items-center justify-between">
-        {/* Brand */}
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <div className="flex flex-col leading-none select-none">
-            <span className="text-white font-extrabold text-base tracking-tight leading-snug">
-              Amora Assurance Agency
-            </span>
-            <span className="text-white/70 text-[10px] font-semibold tracking-wide">
-              of AIA Philippines
-            </span>
+    <>
+      {/* Top bar */}
+      <div
+        className="w-full sticky top-0 z-50"
+        style={{ backgroundColor: '#D31145', boxShadow: '0 1px 0 rgba(0,0,0,0.12)' }}
+      >
+        <div className="h-12 flex items-center justify-between px-4 max-w-screen-xl mx-auto">
+          {/* Brand */}
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <img
+              src="/AIA Logo - White.png"
+              alt="AIA"
+              className="h-6 w-auto object-contain aia-logo-white"
+              style={{ filter: 'brightness(0) invert(1)' }}
+            />
+            <div className="flex flex-col leading-none select-none">
+              <span
+                className="text-white text-sm tracking-tight"
+                style={{ fontFamily: 'AIA Everest', fontWeight: 800, lineHeight: 1.2 }}
+              >
+                Amora Assurance Agency
+              </span>
+              <span
+                className="text-white/70 text-[10px] tracking-wide"
+                style={{ fontFamily: 'AIA Everest', fontWeight: 500 }}
+              >
+                of AIA Philippines
+              </span>
+            </div>
+          </div>
+
+          {/* Upload button */}
+          <button
+            onClick={handleUpload}
+            className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150 flex-shrink-0"
+            style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
+          >
+            {Icons.upload}
+            Upload
+          </button>
+        </div>
+
+        {/* Tab bar — scrollable */}
+        <div
+          className="flex overflow-x-auto scrollbar-none"
+          style={{ backgroundColor: '#D31145', borderTop: '1px solid rgba(255,255,255,0.15)' }}
+        >
+          <div className="flex min-w-max px-2">
+            {TABS.map(tab => {
+              const active = isTabActive(tab, location.pathname);
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => navigate(tab.path)}
+                  className="relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors duration-150 flex-shrink-0 whitespace-nowrap"
+                  style={{
+                    fontFamily: 'AIA Everest',
+                    fontWeight: active ? 700 : 500,
+                    color: active ? '#ffffff' : 'rgba(255,255,255,0.65)',
+                    borderBottom: active ? '2px solid #ffffff' : '2px solid transparent',
+                  }}
+                >
+                  {tab.icon}
+                  {tab.label}
+                  {tab.badge && badgeCount > 0 && (
+                    <span
+                      className="absolute top-1 right-1 min-w-[16px] h-4 text-[10px] font-bold text-white rounded-full flex items-center justify-center px-1"
+                      style={{ backgroundColor: '#1C1C28', fontFamily: 'DM Mono, monospace' }}
+                    >
+                      {badgeCount > 99 ? '99+' : badgeCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
-
-        {/* Desktop nav links + Upload button */}
-        <div className="hidden md:flex items-center gap-1">
-          {NAV_LINKS.map(({ label, to }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                [
-                  'text-white text-sm font-medium px-3.5 py-1.5 rounded-md transition-all duration-150',
-                  isActive
-                    ? 'bg-white/10 underline underline-offset-[6px] decoration-2'
-                    : 'hover:bg-white/10',
-                ].join(' ')
-              }
-            >
-              {label}
-            </NavLink>
-          ))}
-
-          <button
-            onClick={handleUploadNew}
-            className="ml-5 text-white text-xs font-semibold border border-white/80 rounded-md px-4 py-1.5 hover:bg-white hover:text-[#D31145] transition-colors duration-150 flex-shrink-0"
-          >
-            Upload New
-          </button>
-        </div>
-
-        {/* Mobile hamburger */}
-        <button
-          className="md:hidden text-white focus:outline-none"
-          onClick={() => setMenuOpen((prev) => !prev)}
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          ) : (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          )}
-        </button>
       </div>
 
-      {/* Mobile dropdown */}
-      {menuOpen && (
-        <div
-          className="md:hidden px-5 pb-4 pt-2 flex flex-col gap-1"
-          style={{ backgroundColor: '#b80e3a' }}
-        >
-          {NAV_LINKS.map(({ label, to }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                [
-                  'text-white text-sm font-medium px-3.5 py-2.5 rounded-md transition-colors duration-150',
-                  isActive
-                    ? 'bg-white/15 underline underline-offset-[6px] decoration-2 font-semibold'
-                    : 'hover:bg-white/10',
-                ].join(' ')
-              }
-            >
-              {label}
-            </NavLink>
-          ))}
-          <button
-            onClick={() => {
-              setMenuOpen(false);
-              handleUploadNew();
-            }}
-            className="mt-2 text-white text-xs font-semibold border border-white/80 rounded-md px-4 py-2.5 hover:bg-white hover:text-[#D31145] transition-colors duration-150 text-left"
-          >
-            Upload New
-          </button>
+      {/* Bottom nav — mobile only */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
+        style={{ backgroundColor: '#1C1C28', boxShadow: '0 -1px 0 rgba(255,255,255,0.08)' }}
+      >
+        <div className="flex items-stretch h-16">
+          {BOTTOM_TABS.map(tab => {
+            const active = isTabActive(tab, location.pathname);
+            return (
+              <button
+                key={tab.key}
+                onClick={() => navigate(tab.path)}
+                className="flex-1 flex flex-col items-center justify-center gap-1 relative min-h-[44px] transition-colors duration-150"
+                style={{ color: active ? '#ffffff' : 'rgba(255,255,255,0.4)' }}
+              >
+                {tab.icon}
+                <span
+                  className="text-[9px] leading-none"
+                  style={{ fontFamily: 'AIA Everest', fontWeight: active ? 700 : 500 }}
+                >
+                  {tab.label}
+                </span>
+                {tab.badge && badgeCount > 0 && (
+                  <span
+                    className="absolute top-2 right-[calc(50%-12px)] min-w-[14px] h-3.5 text-[9px] font-bold text-white rounded-full flex items-center justify-center px-1"
+                    style={{ backgroundColor: '#D31145', fontFamily: 'DM Mono, monospace' }}
+                  >
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
-      )}
-    </nav>
+        {/* Safe area spacer for iOS */}
+        <div style={{ height: 'env(safe-area-inset-bottom)' }} />
+      </nav>
+
+      {/* Bottom padding so content isn't hidden behind bottom nav on mobile */}
+      <div className="md:hidden h-16" aria-hidden="true" />
+    </>
   );
 }

@@ -1,435 +1,433 @@
 import { useState, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useData } from '../context/DataContext'
-import { formatCurrency } from '../utils/formatters'
-import KpiCard from '../components/KpiCard'
-import Tag from '../components/Tag'
+import SectionHeader from '../components/SectionHeader'
+import ProgressBar from '../components/ProgressBar'
+import MonthlyBarChart from '../components/MonthlyBarChart'
+import DataTable from '../components/DataTable'
+import { MONTH_ABBRS, CURRENT_MONTH_IDX } from '../constants'
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from 'recharts'
+  getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases, getAdvisorTier,
+  formatPeso, formatPct, daysSinceAppt,
+} from '../utils/calculations'
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+const UNIT_TABS = [
+  { key: 'performance', label: 'Performance' },
+  { key: 'members',     label: 'Members' },
+  { key: 'activation',  label: 'Activation' },
+]
 
-const MONTH_ABBRS  = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const CURRENT_MONTH_IDX = new Date().getMonth() // 0-indexed
+// ─── Performance Tab ──────────────────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+function PerformanceTab({ unitAgents, targets }) {
+  const [metric, setMetric] = useState('FYP')
 
-function SectionTitle({ children }) {
+  const ytdFyp   = unitAgents.reduce((s, a) => s + getAgentYtdFyp(a, CURRENT_MONTH_IDX), 0)
+  const ytdCases = unitAgents.reduce((s, a) => s + getAgentYtdCases(a, CURRENT_MONTH_IDX), 0)
+  const producing = unitAgents.filter(a => getAgentYtdCases(a, CURRENT_MONTH_IDX) > 0).length
+  const manpower  = unitAgents.filter(a => a.manpowerInd || unitAgents.some(x => x.code === a.code && getAgentYtdFyp(x, CURRENT_MONTH_IDX) > 0)).length
+  const actRatio  = manpower > 0 ? (producing / manpower) * 100 : 0
+
+  // Chart data: sum per month
+  const chartData = useMemo(() => {
+    return MONTH_ABBRS.map(abbr => {
+      if (metric === 'FYP') return unitAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp || 0), 0)
+      if (metric === 'FYC') return unitAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyc || 0), 0)
+      if (metric === 'Cases') return unitAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.cases || 0), 0)
+      if (metric === 'Producing') return unitAgents.filter(a => (a.monthly?.[abbr]?.cases || 0) > 0).length
+      return 0
+    })
+  }, [unitAgents, metric])
+
+  // Unit's proportional target (# agents / total agency agents × annual target)
+  const agencyFypTarget = targets?.fyp_annual || 0
+  const mdrtGoal = targets?.mdrt_goal || 0
+
+  // MAPA
+  const rookies  = unitAgents.filter(a => a.segment === 'Rookie')
+  const seasoned = unitAgents.filter(a => a.segment === 'Seasoned')
+  const rProd = rookies.filter(a => getAgentYtdCases(a, CURRENT_MONTH_IDX) > 0).length
+  const sProd = seasoned.filter(a => getAgentYtdCases(a, CURRENT_MONTH_IDX) > 0).length
+  const rCases = rookies.reduce((s, a) => s + getAgentYtdCases(a, CURRENT_MONTH_IDX), 0)
+  const sCases = seasoned.reduce((s, a) => s + getAgentYtdCases(a, CURRENT_MONTH_IDX), 0)
+
   return (
-    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-      {children}
-    </p>
-  )
-}
+    <div className="flex flex-col gap-5">
+      {/* KPIs */}
+      <section>
+        <SectionHeader title="Unit KPIs" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+          {[
+            { label: 'FYP YTD',     value: formatPeso(ytdFyp) },
+            { label: 'Cases YTD',   value: String(ytdCases) },
+            { label: 'Producing',   value: String(producing) },
+            { label: 'Activity %',  value: formatPct(actRatio) },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide"
+                style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{label}</p>
+              <p className="text-xl font-bold mt-1" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-function StatBox({ label, value, sub, colorClass = 'bg-gray-50 text-gray-700' }) {
-  return (
-    <div className={`rounded-xl p-4 text-center ${colorClass}`}>
-      <p className="text-3xl font-extrabold leading-none">{value}</p>
-      {sub && <p className="text-xs font-medium mt-1 opacity-70">{sub}</p>}
-      <p className="text-xs font-semibold mt-1 opacity-60">{label}</p>
+      {/* Monthly Trend */}
+      <section>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <SectionHeader title="Monthly Trend" />
+          <div className="flex gap-1">
+            {['FYP', 'FYC', 'Cases', 'Producing'].map(m => (
+              <button
+                key={m}
+                onClick={() => setMetric(m)}
+                className="px-2.5 py-1 rounded text-[10px] transition-colors"
+                style={{
+                  fontFamily: 'AIA Everest', fontWeight: metric === m ? 700 : 500,
+                  backgroundColor: metric === m ? '#D31145' : 'transparent',
+                  color: metric === m ? '#fff' : 'var(--char-60,#6B7180)',
+                  border: `1px solid ${metric === m ? '#D31145' : 'var(--border,#E8E9ED)'}`,
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          <MonthlyBarChart data={chartData} currentMonthIdx={CURRENT_MONTH_IDX} metric={metric} height={140} />
+        </div>
+      </section>
+
+      {/* MAPA */}
+      <section>
+        <SectionHeader title="MAPA Breakdown" />
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Activity Ratio</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[9px] font-bold" style={{ color: '#D31145', fontFamily: 'AIA Everest' }}>Rookie</p>
+                <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                  {rookies.length > 0 ? formatPct((rProd / rookies.length) * 100) : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold" style={{ color: 'var(--blue,#1F78AD)', fontFamily: 'AIA Everest' }}>Seasoned</p>
+                <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                  {seasoned.length > 0 ? formatPct((sProd / seasoned.length) * 100) : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Productivity</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[9px] font-bold" style={{ color: '#D31145', fontFamily: 'AIA Everest' }}>Rookie</p>
+                <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                  {rProd > 0 ? (rCases / rProd).toFixed(1) : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold" style={{ color: 'var(--blue,#1F78AD)', fontFamily: 'AIA Everest' }}>Seasoned</p>
+                <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                  {sProd > 0 ? (sCases / sProd).toFixed(1) : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
+// ─── Members Tab ──────────────────────────────────────────────────────────────
+
+function MembersTab({ unitAgents, targets, navigate }) {
+  const [segFilter, setSegFilter] = useState('All')
+  const mdrtGoal = targets?.mdrt_goal || 0
+
+  const displayed = segFilter === 'All' ? unitAgents : unitAgents.filter(a => a.segment === segFilter)
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (v, row) => (
+        <button
+          onClick={() => navigate(`/agent/${row.code}`)}
+          className="text-left text-xs font-bold text-[#D31145] hover:underline"
+          style={{ fontFamily: 'AIA Everest' }}
+        >
+          {v}
+        </button>
+      ),
+      sortable: true,
+    },
+    {
+      key: 'segment',
+      header: 'Segment',
+      render: v => (
+        <span className="text-[10px] rounded-full px-2 py-0.5"
+          style={{
+            fontFamily: 'AIA Everest', fontWeight: 600,
+            backgroundColor: v === 'Seasoned' ? 'var(--blue-10,#E8F2F9)' : 'var(--red-10,#FAE8EE)',
+            color: v === 'Seasoned' ? 'var(--blue,#1F78AD)' : '#D31145',
+          }}>
+          {v}
+        </span>
+      ),
+      sortable: true,
+    },
+    {
+      key: '_ytdFyp',
+      header: 'FYP YTD',
+      render: (_, row) => (
+        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+          {formatPeso(getAgentYtdFyp(row, CURRENT_MONTH_IDX))}
+        </span>
+      ),
+      sortValue: row => getAgentYtdFyp(row, CURRENT_MONTH_IDX),
+      sortable: true,
+    },
+    {
+      key: '_ytdCases',
+      header: 'Cases YTD',
+      render: (_, row) => (
+        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+          {getAgentYtdCases(row, CURRENT_MONTH_IDX)}
+        </span>
+      ),
+      sortValue: row => getAgentYtdCases(row, CURRENT_MONTH_IDX),
+      sortable: true,
+    },
+    {
+      key: '_tier',
+      header: 'Tier',
+      render: (_, row) => {
+        const tier = mdrtGoal > 0 ? getAdvisorTier(getAgentYtdFyp(row, CURRENT_MONTH_IDX), mdrtGoal) : null
+        return tier ? (
+          <span className="text-[10px] font-semibold" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            {tier.abbr}
+          </span>
+        ) : null
+      },
+      sortable: false,
+    },
+  ]
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Segment filter */}
+      <div className="flex gap-2">
+        {['All', 'Rookie', 'Seasoned'].map(seg => (
+          <button
+            key={seg}
+            onClick={() => setSegFilter(seg)}
+            className="px-3 py-1.5 rounded text-xs transition-colors"
+            style={{
+              fontFamily: 'AIA Everest', fontWeight: segFilter === seg ? 700 : 500,
+              backgroundColor: segFilter === seg ? '#D31145' : '#fff',
+              color: segFilter === seg ? '#fff' : 'var(--char-60,#6B7180)',
+              border: `1px solid ${segFilter === seg ? '#D31145' : 'var(--border,#E8E9ED)'}`,
+            }}
+          >
+            {seg}
+          </button>
+        ))}
+      </div>
+      <DataTable
+        columns={columns}
+        data={displayed}
+        defaultSort={{ key: '_ytdFyp', dir: 'desc' }}
+        pageSize={20}
+        onRowClick={row => navigate(`/agent/${row.code}`)}
+      />
+    </div>
+  )
+}
+
+// ─── Activation Tab ───────────────────────────────────────────────────────────
+
+function ActivationTab({ unitAgents }) {
+  // Recruits: agents appointed within last 90 days
+  const now = Date.now()
+  const recruits = unitAgents.filter(a => {
+    const days = daysSinceAppt(a.apptDate)
+    return days !== null && days <= 90
+  })
+
+  const fastStart = recruits.filter(a => getAgentYtdCases(a, CURRENT_MONTH_IDX) >= 5).length
+  const activated = recruits.filter(a => getAgentYtdCases(a, CURRENT_MONTH_IDX) > 0).length
+  const activationRate = recruits.length > 0 ? (activated / recruits.length) * 100 : 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Recruits (90d)', value: String(recruits.length) },
+          { label: 'Fast Start', value: String(fastStart) },
+          { label: 'Activation Rate', value: formatPct(activationRate) },
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-white rounded-xl p-4 text-center" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            <p className="text-xl font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{value}</p>
+            <p className="text-[10px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {recruits.length === 0 ? (
+        <div className="text-center py-10">
+          <p className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>No new recruits in last 90 days</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {recruits.map(a => {
+            const cases = getAgentYtdCases(a, CURRENT_MONTH_IDX)
+            const status = cases >= 5 ? 'Fast Start' : cases > 0 ? 'Activated' : 'Not Yet'
+            const days = daysSinceAppt(a.apptDate)
+            return (
+              <div
+                key={a.code}
+                className="bg-white rounded-xl p-4 flex items-center gap-3"
+                style={{ border: '1px solid var(--border,#E8E9ED)' }}
+              >
+                <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
+                  style={{ backgroundColor: '#D31145', fontFamily: 'AIA Everest' }}>
+                  {(a.name?.[0] || '?').toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <Link
+                    to={`/agent/${a.code}`}
+                    className="text-xs font-bold truncate block hover:underline"
+                    style={{ fontFamily: 'AIA Everest', color: '#D31145' }}
+                  >
+                    {a.name}
+                  </Link>
+                  <p className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                    {days} days · {cases} case{cases !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <span
+                  className="text-[10px] font-bold rounded px-2 py-1 flex-shrink-0"
+                  style={{
+                    fontFamily: 'AIA Everest',
+                    backgroundColor: status === 'Fast Start' ? 'var(--green-10,#EAF4EB)' : status === 'Activated' ? 'var(--blue-10,#E8F2F9)' : 'var(--char-10,#F2F3F5)',
+                    color: status === 'Fast Start' ? 'var(--green,#4E9A51)' : status === 'Activated' ? 'var(--blue,#1F78AD)' : 'var(--char-60,#6B7180)',
+                  }}
+                >
+                  {status}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 export default function UnitProfilePage() {
   const { unitCode } = useParams()
-  const { data } = useData()
+  const navigate = useNavigate()
+  const { data, isLoaded, targets } = useData()
+  const [activeTab, setActiveTab] = useState('performance')
 
-  const [selectedMonthIdx, setSelectedMonthIdx] = useState(CURRENT_MONTH_IDX)
+  const unit       = (data?.units || []).find(u => u.unitCode === unitCode)
+  const unitAgents = useMemo(() => (data?.agents || []).filter(a =>
+    (a.unitCode === unitCode) || (a.unitName === unit?.unitName) || (a.unit === unit?.unitName)
+  ), [data, unitCode, unit])
 
-  // Find unit from data
-  const unit = useMemo(
-    () => (data?.units ?? []).find(u => u.unitCode === unitCode),
-    [data, unitCode]
-  )
-
-  // Licensed advisors only
-  const agents = useMemo(
-    () => (unit?.agents ?? []).filter(a => a.manpowerInd),
-    [unit]
-  )
-
-  // Monthly aggregates for all 12 months
-  const monthlyData = useMemo(() => {
-    return MONTH_ABBRS.map((abbr, i) => ({
-      abbr,
-      label: MONTH_LABELS[i],
-      fyc:      agents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyc      ?? 0), 0),
-      fyp:      agents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp      ?? 0), 0),
-      cases:    agents.reduce((s, a) => s + (a.monthly?.[abbr]?.cases    ?? 0), 0),
-      producing: agents.filter(a => a.monthly?.[abbr]?.producing).length,
-      recruits:  agents.filter(a => a.monthly?.[abbr]?.isNewRecruit).length,
-    }))
-  }, [agents])
-
-  // Active months (any agent had production)
-  const activeMonths = useMemo(
-    () => monthlyData.map(m => m.fyc > 0 || m.cases > 0),
-    [monthlyData]
-  )
-
-  // YTD (Jan through current month)
-  const ytd = useMemo(() => {
-    const months = monthlyData.slice(0, CURRENT_MONTH_IDX + 1)
-    return {
-      fyc:      months.reduce((s, m) => s + m.fyc, 0),
-      fyp:      months.reduce((s, m) => s + m.fyp, 0),
-      cases:    months.reduce((s, m) => s + m.cases, 0),
-      recruits: months.reduce((s, m) => s + m.recruits, 0),
-      producing: agents.filter(a =>
-        months.some(m => a.monthly?.[m.abbr]?.producing)
-      ).length,
-    }
-  }, [monthlyData, agents])
-
-  // MTD (current month)
-  const mtd = monthlyData[CURRENT_MONTH_IDX]
-
-  // Selected month
-  const selectedMonth = monthlyData[selectedMonthIdx]
-
-  // Average activity ratio
-  const avgActivityRatio = useMemo(() => {
-    const withRatio = agents.filter(a => (a.activityRatio ?? 0) > 0)
-    if (!withRatio.length) return null
-    return withRatio.reduce((s, a) => s + a.activityRatio, 0) / withRatio.length
-  }, [agents])
-
-  // Segment breakdown
-  const rookies  = agents.filter(a => a.segment === 'Rookie')
-  const seasoned = agents.filter(a => a.segment === 'Seasoned')
-
-  // Chart data: Jan through current month
-  const chartData = monthlyData.slice(0, CURRENT_MONTH_IDX + 1)
-
-  // Advisors sorted by FYC MTD desc
-  const agentsSorted = useMemo(
-    () => [...agents].sort((a, b) => (b.fycMtd ?? 0) - (a.fycMtd ?? 0)),
-    [agents]
-  )
-
-  // Not found
-  if (!unit) {
+  if (!isLoaded) return null
+  if (!unit && unitAgents.length === 0) {
     return (
-      <div className="min-h-screen bg-aia-gray flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
         <div className="text-center">
-          <p className="text-gray-500 font-semibold">Unit not found.</p>
-          <Link to="/units" className="mt-2 text-sm text-aia-red hover:underline">
-            ← Back to Units
-          </Link>
+          <p className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Unit not found</p>
+          <button onClick={() => navigate('/units')} className="mt-3 text-xs text-[#D31145]" style={{ fontFamily: 'AIA Everest' }}>
+            Back to units
+          </button>
         </div>
       </div>
     )
   }
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
+  const unitName    = unit?.unitName || unitCode
+  const managerName = unit?.managerName || unitAgents.find(a => a.isManager)?.name || '—'
+  const area        = unit?.area || unitAgents[0]?.area || '—'
 
   return (
-    <div className="min-h-screen bg-aia-gray">
-      <div className="max-w-screen-xl mx-auto px-4 py-8">
+    <div className="min-h-screen pb-4" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
+      {/* Hero */}
+      <div className="bg-white" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+        <div className="max-w-screen-xl mx-auto px-4 pt-5 pb-0">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-xs mb-4"
+            style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M9 3L5 7l4 4" />
+            </svg>
+            Back
+          </button>
 
-        {/* ── Breadcrumb + Header ── */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
-            <Link to="/units" className="hover:text-aia-red transition-colors font-medium">
-              Units
-            </Link>
-            <span>›</span>
-            <span className="text-gray-700 font-semibold">
-              {unit.unitName || unit.unitCode}
-            </span>
-          </div>
-
-          {/* Header band */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-[#D31145] to-[#a80d37] px-6 py-5">
-              <h1 className="text-xl font-extrabold text-white tracking-tight">
-                {unit.unitName || unit.unitCode}
-              </h1>
-              <p className="text-red-200 text-xs font-medium mt-1">
-                Unit Code: {unit.unitCode} · {agents.length} Licensed Advisors ·{' '}
-                {rookies.length} Rookies · {seasoned.length} Seasoned
+          <div className="flex items-start gap-4 mb-4">
+            <div
+              className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold text-white flex-shrink-0"
+              style={{ backgroundColor: '#D31145', fontFamily: 'AIA Everest' }}
+            >
+              {unitName.slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{unitName}</h1>
+              <p className="text-[11px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                Manager: {managerName}
               </p>
-            </div>
-            {/* Quick MTD stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
-              {[
-                { label: 'FYC MTD', value: formatCurrency(mtd.fyc, true) },
-                { label: 'Cases MTD', value: mtd.cases },
-                { label: 'Producing', value: `${mtd.producing} / ${agents.length}` },
-                { label: 'New Recruits MTD', value: mtd.recruits },
-              ].map(({ label, value }) => (
-                <div key={label} className="px-5 py-3 text-center">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  <p className="text-lg font-bold text-gray-800 mt-0.5">{value}</p>
-                </div>
-              ))}
+              <div className="flex gap-1.5 mt-2 flex-wrap">
+                <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                  style={{ fontFamily: 'AIA Everest', backgroundColor: 'var(--char-10,#F2F3F5)', color: '#1C1C28' }}>
+                  {unitAgents.length} members
+                </span>
+                <span className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                  style={{ fontFamily: 'AIA Everest', backgroundColor: 'var(--char-10,#F2F3F5)', color: '#1C1C28' }}>
+                  {area}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* ── Month Selector ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-          <SectionTitle>Month View</SectionTitle>
-          <div className="flex flex-wrap gap-2">
-            {MONTH_ABBRS.map((abbr, idx) => (
+          {/* Sub-tabs */}
+          <div className="flex gap-0 -mb-px">
+            {UNIT_TABS.map(tab => (
               <button
-                key={abbr}
-                onClick={() => setSelectedMonthIdx(idx)}
-                className={[
-                  'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-150',
-                  selectedMonthIdx === idx
-                    ? 'bg-aia-red text-white border-aia-red'
-                    : activeMonths[idx]
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'
-                    : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300',
-                ].join(' ')}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="px-4 py-2.5 text-xs transition-colors"
+                style={{
+                  fontFamily: 'AIA Everest',
+                  fontWeight: activeTab === tab.key ? 700 : 500,
+                  color: activeTab === tab.key ? '#D31145' : 'var(--char-60,#6B7180)',
+                  borderBottom: activeTab === tab.key ? '2px solid #D31145' : '2px solid transparent',
+                }}
               >
-                {MONTH_LABELS[idx]}
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* ── Selected Month KPIs ── */}
-        <div className="mb-6">
-          <SectionTitle>{MONTH_LABELS[selectedMonthIdx]} Performance</SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <KpiCard title="FYC" value={formatCurrency(selectedMonth.fyc, true)} color="red" />
-            <KpiCard title="FYP" value={formatCurrency(selectedMonth.fyp, true)} color="blue" />
-            <KpiCard title="Cases" value={selectedMonth.cases} color="green" />
-            <KpiCard title="Producing" value={`${selectedMonth.producing} / ${agents.length}`} color="gray" />
-            <KpiCard title="New Recruits" value={selectedMonth.recruits} color="green" />
-          </div>
-        </div>
-
-        {/* ── YTD KPIs ── */}
-        <div className="mb-6">
-          <SectionTitle>
-            YTD Summary — {MONTH_LABELS[0]} to {MONTH_LABELS[CURRENT_MONTH_IDX]}
-          </SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <KpiCard title="FYC YTD" value={formatCurrency(ytd.fyc, true)} color="red" />
-            <KpiCard title="FYP YTD" value={formatCurrency(ytd.fyp, true)} color="blue" />
-            <KpiCard title="Cases YTD" value={ytd.cases} color="green" />
-            <KpiCard title="Producing YTD" value={ytd.producing} color="gray" />
-            <KpiCard title="New Recruits YTD" value={ytd.recruits} color="green" />
-          </div>
-        </div>
-
-        {/* ── Breakdown + Chart ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-
-          {/* Unit Breakdown */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <SectionTitle>Unit Breakdown</SectionTitle>
-
-            {/* Rookie vs Seasoned */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <StatBox
-                label="Rookies"
-                value={rookies.length}
-                sub={`${rookies.filter(a => a.isProducing).length} producing`}
-                colorClass="bg-blue-50 text-blue-700"
-              />
-              <StatBox
-                label="Seasoned"
-                value={seasoned.length}
-                sub={`${seasoned.filter(a => a.isProducing).length} producing`}
-                colorClass="bg-purple-50 text-purple-700"
-              />
-            </div>
-
-            {/* Area breakdown */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <StatBox
-                label="Davao (SCM2)"
-                value={agents.filter(a => a.area === 'SCM2 (Davao)').length}
-                colorClass="bg-red-50 text-aia-red"
-              />
-              <StatBox
-                label="Gensan (SCM3)"
-                value={agents.filter(a => a.area === 'SCM3 (Gensan)').length}
-                colorClass="bg-sky-50 text-sky-700"
-              />
-            </div>
-
-            {/* Activity Ratio */}
-            {avgActivityRatio !== null && (
-              <div className="mt-2 p-3 bg-amber-50 rounded-xl text-center">
-                <p className="text-2xl font-extrabold text-amber-700">
-                  {avgActivityRatio.toFixed(1)}%
-                </p>
-                <p className="text-xs font-semibold text-amber-500 mt-1">Avg Activity Ratio</p>
-              </div>
-            )}
-          </div>
-
-          {/* FYC Month-on-Month Chart */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <SectionTitle>FYC Month-on-Month</SectionTitle>
-            {chartData.every(m => m.fyc === 0) ? (
-              <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
-                No FYC data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    tickFormatter={v => v >= 1_000_000
-                      ? `₱${(v / 1_000_000).toFixed(1)}M`
-                      : `₱${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 10 }}
-                    width={54}
-                  />
-                  <Tooltip
-                    formatter={v => [formatCurrency(v, true), 'FYC']}
-                    labelStyle={{ fontWeight: 600 }}
-                  />
-                  <Bar dataKey="fyc" fill="#D31145" radius={[4, 4, 0, 0]} name="FYC" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* ── Cases Month-on-Month (secondary chart) ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-          <SectionTitle>Cases Month-on-Month</SectionTitle>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 10 }} width={30} allowDecimals={false} />
-              <Tooltip formatter={v => [v, 'Cases']} labelStyle={{ fontWeight: 600 }} />
-              <Bar dataKey="cases" fill="#88B943" radius={[4, 4, 0, 0]} name="Cases" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* ── Advisors List ── */}
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-700">
-              Advisors ({agents.length})
-            </h3>
-          </div>
-
-          {agents.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
-              No licensed advisors found in this unit.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr>
-                    <th className="sticky left-0 z-20 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap border-r border-[#b80e3a]">
-                      Name
-                    </th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">Yr</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">Segment</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">FYC MTD</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">FYP MTD</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">Cases</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">Status</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] whitespace-nowrap">Activity Ratio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agentsSorted.map((agent, idx) => (
-                    <tr
-                      key={agent.code ?? idx}
-                      className="group even:bg-gray-50 border-b border-gray-100 hover:bg-red-50/40 transition-colors duration-75"
-                    >
-                      <td className="sticky left-0 z-10 px-4 py-2.5 font-semibold text-gray-800 whitespace-nowrap bg-white group-even:bg-gray-50 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                        {agent.code
-                          ? (
-                            <Link
-                              to={`/agent/${agent.code}`}
-                              className="hover:text-aia-red hover:underline underline-offset-2 transition-colors"
-                            >
-                              {agent.name || '—'}
-                            </Link>
-                          )
-                          : (agent.name || '—')
-                        }
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-gray-600 tabular-nums">
-                        {agent.agentYear ?? '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <Tag variant={
-                          agent.segment === 'Rookie' ? 'rookie'
-                          : agent.segment === 'Seasoned' ? 'seasoned'
-                          : 'default'
-                        }>
-                          {agent.segment || '—'}
-                        </Tag>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-gray-800 whitespace-nowrap">
-                        {formatCurrency(agent.fycMtd, true)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-gray-800 whitespace-nowrap">
-                        {formatCurrency(agent.fypTotal, true)}
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-gray-700 tabular-nums">
-                        {agent.casesTotal ?? 0}
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {agent.isProducing
-                          ? (
-                            <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                              Active
-                            </span>
-                          )
-                          : (
-                            <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                              Inactive
-                            </span>
-                          )
-                        }
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600 tabular-nums">
-                        {(agent.activityRatio ?? 0) > 0
-                          ? `${agent.activityRatio.toFixed(1)}%`
-                          : '—'
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Footer note */}
-        <p className="mt-4 text-xs text-gray-400 text-right">
-          {data?.uploadDate
-            ? `Data as of ${new Date(data.uploadDate).toLocaleDateString('en-PH', {
-                year: 'numeric', month: 'short', day: 'numeric',
-              })}`
-            : ''}
-        </p>
+      {/* Content */}
+      <div className="max-w-screen-xl mx-auto px-4 py-5">
+        {activeTab === 'performance' && <PerformanceTab unitAgents={unitAgents} targets={targets} />}
+        {activeTab === 'members'     && <MembersTab unitAgents={unitAgents} targets={targets} navigate={navigate} />}
+        {activeTab === 'activation'  && <ActivationTab unitAgents={unitAgents} />}
       </div>
     </div>
   )

@@ -5,6 +5,8 @@ import KpiCard from '../components/KpiCard'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 import { exportMonthlyReport } from '../utils/exportExcel'
 import Tag from '../components/Tag'
+import { CURRENT_MONTH_IDX } from '../constants'
+import { getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases } from '../utils/calculations'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -109,6 +111,7 @@ export default function LeaderboardPage() {
 
   const [subTab,          setSubTab]          = useState('Advisors')
   const [selectedMonth,   setSelectedMonth]   = useState(MONTH_ABBRS[new Date().getMonth()])
+  const [ytdMode,         setYtdMode]         = useState(false)
   const [highlightMetric, setHighlightMetric] = useState('FYC')
   const [segView,         setSegView]         = useState('Overall')
   const [area,            setArea]            = useState('All')
@@ -125,11 +128,19 @@ export default function LeaderboardPage() {
     return ['All Units', ...names]
   }, [agents])
 
-  // ── Month-keyed agent data (uses monthly columns)
-  const monthData = useMemo(() =>
-    agents.map(a => ({ ...a, m: a.monthly?.[selectedMonth] ?? {} })),
-    [agents, selectedMonth]
-  )
+  // ── Month-keyed agent data (monthly or YTD)
+  const monthData = useMemo(() => {
+    const monthIdx = MONTH_ABBRS.indexOf(selectedMonth)
+    return agents.map(a => {
+      if (ytdMode) {
+        const ytdFyp   = getAgentYtdFyp(a, monthIdx)
+        const ytdFyc   = getAgentYtdFyc(a, monthIdx)
+        const ytdCases = getAgentYtdCases(a, monthIdx)
+        return { ...a, m: { fyp: ytdFyp, fyc: ytdFyc, cases: ytdCases, anp: ytdFyp } }
+      }
+      return { ...a, m: a.monthly?.[selectedMonth] ?? {} }
+    })
+  }, [agents, selectedMonth, ytdMode])
 
   // ── Filtered agents (for Advisors tab)
   const filtered = useMemo(() => {
@@ -273,6 +284,17 @@ export default function LeaderboardPage() {
               <p className="text-sm text-gray-500 mt-0.5 font-medium">{monthLabel} 2026</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {/* YTD / Monthly toggle */}
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setYtdMode(false)}
+                  className={`px-3 py-1.5 text-sm font-semibold transition-colors ${!ytdMode ? 'bg-aia-red text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                >Monthly</button>
+                <button
+                  onClick={() => setYtdMode(true)}
+                  className={`px-3 py-1.5 text-sm font-semibold border-l border-gray-200 transition-colors ${ytdMode ? 'bg-aia-red text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                >YTD</button>
+              </div>
               {/* Month pills */}
               <div className="flex gap-1 bg-white rounded-lg p-1 shadow-sm border border-gray-200 flex-wrap">
                 {AVAILABLE_MONTHS.map(abbr => (

@@ -5,6 +5,8 @@ import { formatCurrency } from '../utils/formatters'
 import { exportAgents } from '../utils/exportExcel'
 import Tag from '../components/Tag'
 import StatusIndicator from '../components/StatusIndicator'
+import { CURRENT_MONTH_IDX } from '../constants'
+import { getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases, formatPeso } from '../utils/calculations'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,11 +86,14 @@ export default function AgentsPage() {
   const [segment,    setSegment]    = useState('All')
   const [unit,       setUnit]       = useState('All')
   const [status,     setStatus]     = useState('All')
+  const [ytdMode,    setYtdMode]    = useState(false)
 
   // --------------------------------------------------
   // Sort state — default ANP MTD descending
   // --------------------------------------------------
   const [sortKey, setSortKey] = useState('anpMtd')
+  // YTD sort keys mirror the computed ytd fields
+  const effectiveSortKey = ytdMode && sortKey === 'anpMtd' ? '_ytdFyp' : sortKey
   const [sortDir, setSortDir] = useState('desc')
 
   // --------------------------------------------------
@@ -103,6 +108,9 @@ export default function AgentsPage() {
     () => (data?.agents ?? []).filter(a => a.manpowerInd).map(a => ({
       ...a,
       moInactive: computeMonthsInactive(a),
+      _ytdFyp:  getAgentYtdFyp(a, CURRENT_MONTH_IDX),
+      _ytdFyc:  getAgentYtdFyc(a, CURRENT_MONTH_IDX),
+      _ytdCases: getAgentYtdCases(a, CURRENT_MONTH_IDX),
     })),
     [data]
   )
@@ -333,6 +341,21 @@ export default function AgentsPage() {
             </div>
           )}
 
+          {/* YTD toggle */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">View</label>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden h-9">
+              <button
+                onClick={() => setYtdMode(false)}
+                className={`px-3 text-xs font-semibold transition-colors ${!ytdMode ? 'bg-[#D31145] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >MTD</button>
+              <button
+                onClick={() => setYtdMode(true)}
+                className={`px-3 text-xs font-semibold border-l border-gray-300 transition-colors ${ytdMode ? 'bg-[#D31145] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >YTD</button>
+            </div>
+          </div>
+
           {/* Download Excel */}
           <div className="flex flex-col gap-1 ml-auto">
             <label className="text-xs font-semibold text-transparent uppercase tracking-wide select-none">
@@ -359,24 +382,32 @@ export default function AgentsPage() {
               {/* Head */}
               <thead>
                 <tr>
-                  {COLUMNS.map((col) => (
-                    <th
-                      key={col.key}
-                      onClick={() => handleSortClick(col)}
-                      className={[
-                        'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] select-none whitespace-nowrap',
-                        col.key === 'name' ? 'sticky left-0 z-20 border-r border-[#b80e3a]' : '',
-                        col.sortable
-                          ? 'cursor-pointer hover:bg-[#b80e3a] transition-colors duration-100'
-                          : '',
-                      ].join(' ')}
-                    >
-                      {col.label}
-                      {col.sortable && (
-                        <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
-                      )}
-                    </th>
-                  ))}
+                  {COLUMNS.map((col) => {
+                    const ytdLabel = ytdMode && col.key === 'anpMtd' ? 'FYP YTD'
+                      : ytdMode && col.key === 'fycMtd' ? 'FYC YTD'
+                      : ytdMode && col.key === 'fypTotal' ? null  // hide
+                      : ytdMode && col.key === 'casesTotal' ? 'Cases YTD'
+                      : null
+                    if (ytdMode && col.key === 'fypTotal') return null
+                    return (
+                      <th
+                        key={col.key}
+                        onClick={() => handleSortClick(col)}
+                        className={[
+                          'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] select-none whitespace-nowrap',
+                          col.key === 'name' ? 'sticky left-0 z-20 border-r border-[#b80e3a]' : '',
+                          col.sortable
+                            ? 'cursor-pointer hover:bg-[#b80e3a] transition-colors duration-100'
+                            : '',
+                        ].join(' ')}
+                      >
+                        {ytdLabel || col.label}
+                        {col.sortable && (
+                          <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
+                        )}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
 
@@ -442,24 +473,26 @@ export default function AgentsPage() {
                           {agent.unitName ?? '—'}
                         </td>
 
-                        {/* ANP MTD */}
+                        {/* ANP MTD / FYP YTD */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                          {formatCurrency(agent.anpMtd)}
+                          {ytdMode ? formatPeso(agent._ytdFyp) : formatCurrency(agent.anpMtd)}
                         </td>
 
-                        {/* FYC MTD */}
+                        {/* FYC MTD / FYC YTD */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                          {formatCurrency(agent.fycMtd)}
+                          {ytdMode ? formatPeso(agent._ytdFyc) : formatCurrency(agent.fycMtd)}
                         </td>
 
-                        {/* FYP MTD (compact) */}
-                        <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
-                          {formatCurrency(agent.fypTotal, true)}
-                        </td>
+                        {/* FYP MTD — hidden in YTD mode */}
+                        {!ytdMode && (
+                          <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 whitespace-nowrap">
+                            {formatCurrency(agent.fypTotal, true)}
+                          </td>
+                        )}
 
-                        {/* Cases Total */}
+                        {/* Cases Total / Cases YTD */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-800">
-                          {agent.casesTotal ?? '—'}
+                          {ytdMode ? agent._ytdCases : (agent.casesTotal ?? '—')}
                         </td>
 
                         {/* Regular Cases */}

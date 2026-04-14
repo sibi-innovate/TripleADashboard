@@ -228,6 +228,22 @@ function parseAgentRow(row) {
   const recruiterName = parseName(String(get('RECRUITER_NAME') ?? '').trim())
   const recruiterCode = String(get('RECRUITER_CODE') ?? '').trim()
 
+  // --- Birth date (optional column — graceful if missing)
+  const rawBirth  = get('BIRTH_DATE') ?? get('BIRTHDATE') ?? get('BIRTH DATE')
+  let birthDate = null
+  if (rawBirth != null) {
+    const bNum = num(rawBirth)
+    if (bNum && bNum > 19000101) {
+      const by  = Math.floor(bNum / 10000)
+      const bmo = Math.floor((bNum % 10000) / 100) - 1
+      const bd  = bNum % 100
+      birthDate = new Date(by, bmo, bd).toISOString().split('T')[0]
+    } else if (typeof rawBirth === 'string' && rawBirth.trim()) {
+      const parsed = new Date(rawBirth.trim())
+      if (!isNaN(parsed)) birthDate = parsed.toISOString().split('T')[0]
+    }
+  }
+
   return {
     name,
     code,
@@ -261,6 +277,10 @@ function parseAgentRow(row) {
     quarterlyPers,
     recruiterName,
     recruiterCode,
+    birthDate,
+    appointmentDate: apptDate && apptDate > 19000101
+      ? (() => { const y=Math.floor(apptDate/10000),mo=Math.floor((apptDate%10000)/100)-1,d=apptDate%100; return new Date(y,mo,d).toISOString().split('T')[0] })()
+      : null,
   }
 }
 

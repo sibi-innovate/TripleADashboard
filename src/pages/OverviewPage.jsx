@@ -1,460 +1,513 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  ResponsiveContainer,
-  LineChart, Line,
-  PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, Legend,
-} from 'recharts'
 import { useData } from '../context/DataContext'
+import PeriodControl from '../components/PeriodControl'
+import SectionHeader from '../components/SectionHeader'
+import ProgressBar from '../components/ProgressBar'
 import KpiCard from '../components/KpiCard'
-import { formatCurrency, formatNumber } from '../utils/formatters'
+import MonthlyBarChart from '../components/MonthlyBarChart'
+import {
+  MONTH_ABBRS, MONTH_LABELS, CURRENT_MONTH_IDX,
+} from '../constants'
+import {
+  getAgentYtdFyp, getAgentYtdFyc, getAgentYtdAnp, getAgentYtdCases,
+  getAgentYtdProducingMonths, getPropensityScore, formatPeso, formatPct,
+} from '../utils/calculations'
 
-// ─── Brand tokens ─────────────────────────────────────────────────────────────
-const AIA_RED = '#D31145'
+const METRIC_OPTIONS = ['FYP', 'ANP', 'FYC', 'Cases', 'Producing Advisors']
 
-const MONTH_ABBRS  = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const AVAILABLE_MONTHS = MONTH_ABBRS  // all 12 months — future months will show 0 until data is uploaded
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const AREA_COLORS = {
-  'SCM2 (Davao)':  AIA_RED,
-  'SCM3 (Gensan)': '#1F78AD',
+function getMonthFyp(agent, monthIdx) {
+  return agent.monthly?.[MONTH_ABBRS[monthIdx]]?.fyp || 0
+}
+function getMonthAnp(agent, monthIdx) {
+  return agent.monthly?.[MONTH_ABBRS[monthIdx]]?.anp || 0
+}
+function getMonthFyc(agent, monthIdx) {
+  return agent.monthly?.[MONTH_ABBRS[monthIdx]]?.fyc || 0
+}
+function getMonthCases(agent, monthIdx) {
+  return agent.monthly?.[MONTH_ABBRS[monthIdx]]?.cases || 0
+}
+function getMonthProducing(agent, monthIdx) {
+  return (agent.monthly?.[MONTH_ABBRS[monthIdx]]?.cases || 0) > 0
 }
 
-const SEGMENT_COLORS = {
-  Rookie:   AIA_RED,
-  Seasoned: '#FF754D',
+function agentFyp(agent, mode, monthIdx) {
+  return mode === 'ytd' ? getAgentYtdFyp(agent, monthIdx) : getMonthFyp(agent, monthIdx)
+}
+function agentAnp(agent, mode, monthIdx) {
+  return mode === 'ytd' ? getAgentYtdAnp(agent, monthIdx) : getMonthAnp(agent, monthIdx)
+}
+function agentFyc(agent, mode, monthIdx) {
+  return mode === 'ytd' ? getAgentYtdFyc(agent, monthIdx) : getMonthFyc(agent, monthIdx)
+}
+function agentCases(agent, mode, monthIdx) {
+  return mode === 'ytd' ? getAgentYtdCases(agent, monthIdx) : getMonthCases(agent, monthIdx)
+}
+function agentProducing(agent, mode, monthIdx) {
+  if (mode === 'ytd') return getAgentYtdCases(agent, monthIdx) > 0
+  return getMonthProducing(agent, monthIdx)
 }
 
-const AREAS = [
-  { label: 'All',           key: 'All' },
-  { label: 'Davao (SCM2)', key: 'SCM2 (Davao)' },
-  { label: 'Gensan (SCM3)', key: 'SCM3 (Gensan)' },
-]
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-const SEGMENTS = [
-  { label: 'All',      key: 'All' },
-  { label: 'Rookie',   key: 'Rookie' },
-  { label: 'Seasoned', key: 'Seasoned' },
-]
-
-function sumField(agents, field) {
-  return agents.reduce((acc, a) => acc + (Number(a[field]) || 0), 0)
-}
-
-function FilterPill({ active, onClick, children }) {
+function ThermometerCard({ title, actual, target, format = 'currency' }) {
+  const pct = target > 0 ? Math.min(100, (actual / target) * 100) : 0
+  const fmt = v => format === 'currency' ? formatPeso(v) : String(Math.round(v))
   return (
-    <button
-      onClick={onClick}
-      className={[
-        'px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 whitespace-nowrap',
-        active
-          ? 'bg-[#D31145] text-white border-[#D31145] shadow-sm'
-          : 'bg-white text-[#848A90] border-[#D6D8DA] hover:border-[#D31145] hover:text-[#D31145]',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  )
-}
-
-function ChartCard({ title, children, className = '' }) {
-  return (
-    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3 ${className}`}>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-[#848A90]">{title}</p>
-      {children}
+    <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide mb-2"
+        style={{ fontFamily: 'AIA Everest', fontWeight: 600, color: 'var(--char-60,#6B7180)' }}>
+        {title}
+      </p>
+      <div className="flex items-end justify-between mb-2">
+        <span className="text-lg font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+          {fmt(actual)}
+        </span>
+        <span className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+          / {fmt(target)} target
+        </span>
+      </div>
+      <ProgressBar value={pct} color={pct >= 100 ? 'var(--green,#4E9A51)' : '#D31145'} height={6} />
+      <p className="text-[10px] mt-1.5 font-bold"
+        style={{ fontFamily: 'DM Mono, monospace', color: pct >= 100 ? 'var(--green,#4E9A51)' : '#D31145' }}>
+        {pct.toFixed(1)}%
+      </p>
     </div>
   )
 }
 
-function MapaCard({ label, rookieVal, seasonedVal, format = 'number', suffix = '' }) {
-  const fmt = (v) => {
-    if (v === null || v === undefined || isNaN(v)) return '—'
-    if (format === 'currency') return formatCurrency(v, true)
-    if (format === 'percent') return `${v.toFixed(1)}%`
-    return formatNumber(Math.round(v)) + suffix
+function AlertStrip({ count, onClick }) {
+  if (count === 0) return null
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-between rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-90"
+      style={{ backgroundColor: 'var(--amber-10,#FDF3E3)', border: '1px solid var(--amber,#C97B1A)' }}
+    >
+      <div className="flex items-center gap-2.5">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--amber,#C97B1A)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 2L14 13H2L8 2z" />
+          <line x1="8" y1="7" x2="8" y2="9.5" />
+          <circle cx="8" cy="11.5" r="0.5" fill="var(--amber,#C97B1A)" stroke="none" />
+        </svg>
+        <span className="text-sm font-bold" style={{ fontFamily: 'AIA Everest', color: 'var(--amber,#C97B1A)' }}>
+          {count} advisor{count !== 1 ? 's' : ''} in Fast Start window
+        </span>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--amber,#C97B1A)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 3l4 4-4 4" />
+      </svg>
+    </button>
+  )
+}
+
+function TopContributorRow({ rank, agent, fyp }) {
+  const initials = name => {
+    const p = name?.trim().split(/\s+/) || []
+    if (p.length <= 1) return (p[0]?.[0] || '?').toUpperCase()
+    return (p[0][0] + p[p.length - 1][0]).toUpperCase()
   }
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-2">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-[#848A90]">{label}</p>
+    <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+      <span className="w-5 text-center text-xs font-bold flex-shrink-0"
+        style={{ fontFamily: 'DM Mono, monospace', color: rank <= 3 ? '#D31145' : 'var(--char-60,#6B7180)' }}>
+        {rank}
+      </span>
+      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
+        style={{ backgroundColor: rank <= 3 ? '#D31145' : 'var(--char-30,#B0B3BC)', fontFamily: 'AIA Everest' }}>
+        {initials(agent.name)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</p>
+        <p className="text-[10px] truncate" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+          {agent.unitName || agent.unit || '—'} · {agent.segment}
+        </p>
+      </div>
+      <span className="text-xs font-bold flex-shrink-0" style={{ fontFamily: 'DM Mono, monospace', color: '#D31145' }}>
+        {formatPeso(fyp)}
+      </span>
+    </div>
+  )
+}
+
+function PropensityRow({ agent, score }) {
+  const signals = []
+  if (score >= 30) signals.push('Active last month')
+  if (score >= 50) signals.push('Consecutive months')
+  if (agent.segment === 'Seasoned') signals.push('Seasoned')
+
+  return (
+    <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
+      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
+        style={{ backgroundColor: 'var(--amber,#C97B1A)', fontFamily: 'AIA Everest' }}>
+        {(agent.name?.[0] || '?').toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</p>
+        <p className="text-[10px] truncate" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+          {signals.join(' · ')}
+        </p>
+      </div>
+      <div className="flex-shrink-0 text-right">
+        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--amber,#C97B1A)' }}>
+          {score}
+        </span>
+        <p className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>score</p>
+      </div>
+    </div>
+  )
+}
+
+function MapaCard({ label, rookieVal, seasonedVal, format = 'number' }) {
+  const fmt = v => {
+    if (v === null || v === undefined || isNaN(v)) return '—'
+    if (format === 'currency') return formatPeso(v)
+    if (format === 'percent') return formatPct(v)
+    return Math.round(v).toLocaleString()
+  }
+  return (
+    <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide mb-3"
+        style={{ fontFamily: 'AIA Everest', fontWeight: 600, color: 'var(--char-60,#6B7180)' }}>{label}</p>
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col">
-          <span className="text-[10px] text-[#D31145] font-bold uppercase tracking-wide">Rookie</span>
-          <span className="text-lg font-extrabold text-[#333D47] tabular-nums leading-tight">{fmt(rookieVal)}</span>
+        <div>
+          <p className="text-[9px] font-bold uppercase mb-0.5"
+            style={{ fontFamily: 'AIA Everest', color: '#D31145' }}>Rookie</p>
+          <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+            {fmt(rookieVal)}
+          </p>
         </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-[#FF754D] font-bold uppercase tracking-wide">Seasoned</span>
-          <span className="text-lg font-extrabold text-[#333D47] tabular-nums leading-tight">{fmt(seasonedVal)}</span>
+        <div>
+          <p className="text-[9px] font-bold uppercase mb-0.5"
+            style={{ fontFamily: 'AIA Everest', color: 'var(--blue,#1F78AD)' }}>Seasoned</p>
+          <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+            {fmt(seasonedVal)}
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export default function OverviewPage() {
   const navigate = useNavigate()
-  const { data, isLoaded } = useData()
+  const { data, isLoaded, targets, loadTargets } = useData()
 
-  const [area, setArea]       = useState('All')
-  const [segment, setSegment] = useState('All')
-  // null = MTD (use Excel MTD columns); string = specific month abbr
-  const [monthFilter, setMonthFilter] = useState(null)
-  const [unitFilter, setUnitFilter]   = useState('All Units')
-  const [trendMetric, setTrendMetric] = useState('ANP')
+  const [period, setPeriod] = useState({ mode: 'monthly', monthIdx: CURRENT_MONTH_IDX })
+  const [area, setArea] = useState('All')
+  const [trendMetric, setTrendMetric] = useState('FYP')
 
-  // All hooks must be called before any early return
+  // Load targets on mount
+  useEffect(() => { loadTargets?.() }, [])
+
+  const { mode, monthIdx } = period
+
+  // All agents filtered by area
   const filteredAgents = useMemo(() => {
-    if (!data?.agents) return []
-    let result = data.agents
-    if (area !== 'All') result = result.filter(a => a.area === area)
-    if (segment !== 'All') result = result.filter(a => a.segment === segment)
-    return result
-  }, [data, area, segment])
+    const agents = data?.agents || []
+    return area === 'All' ? agents : agents.filter(a => a.area === area)
+  }, [data, area])
 
-  // Unit options derived from filteredAgents (before unit filter applied)
-  const unitOptions = useMemo(() => {
-    const names = [...new Set(filteredAgents.map(a => a.unitName).filter(Boolean))].sort()
-    return ['All Units', ...names]
-  }, [filteredAgents])
+  // Agency KPIs for selected period
+  const kpis = useMemo(() => {
+    const totalFyp  = filteredAgents.reduce((s, a) => s + agentFyp(a, mode, monthIdx), 0)
+    const totalAnp  = filteredAgents.reduce((s, a) => s + agentAnp(a, mode, monthIdx), 0)
+    const totalFyc  = filteredAgents.reduce((s, a) => s + agentFyc(a, mode, monthIdx), 0)
+    const totalCases = filteredAgents.reduce((s, a) => s + agentCases(a, mode, monthIdx), 0)
+    const producing = filteredAgents.filter(a => agentProducing(a, mode, monthIdx)).length
+    const manpower  = filteredAgents.filter(a =>
+      mode === 'ytd'
+        ? getAgentYtdCases(a, monthIdx) > 0 || (a.manpowerInd ?? false)
+        : (a.monthly?.[MONTH_ABBRS[monthIdx]]?.manpower > 0 || a.manpowerInd)
+    ).length
+    const actRatio  = manpower > 0 ? (producing / manpower) * 100 : 0
+    const casesAh   = mode === 'monthly' ? (filteredAgents.reduce((s, a) => s + (Number(a.casesAh) || 0), 0)) : 0
 
-  // displayAgents: filteredAgents further narrowed by unitFilter — drives ALL KPI calculations
-  const displayAgents = useMemo(() => {
-    if (unitFilter === 'All Units') return filteredAgents
-    return filteredAgents.filter(a => a.unitName === unitFilter)
-  }, [filteredAgents, unitFilter])
+    return { totalFyp, totalAnp, totalFyc, totalCases, producing, manpower, actRatio, casesAh }
+  }, [filteredAgents, mode, monthIdx])
 
-  // Month-aware agent data: when monthFilter is set, use monthly columns
-  const agentsWithMonth = useMemo(() => {
-    if (!monthFilter) return displayAgents // use MTD columns
-    return displayAgents.map(a => ({
-      ...a,
-      _m: a.monthly?.[monthFilter] ?? {},
-    }))
-  }, [displayAgents, monthFilter])
+  // Previous period KPIs for trends
+  const prevKpis = useMemo(() => {
+    const prevMonthIdx = mode === 'ytd' ? Math.max(0, monthIdx - 1) : Math.max(0, monthIdx - 1)
+    if (monthIdx === 0) return null
+    const anp = filteredAgents.reduce((s, a) => s + agentAnp(a, mode, prevMonthIdx), 0)
+    const fyc = filteredAgents.reduce((s, a) => s + agentFyc(a, mode, prevMonthIdx), 0)
+    const producing = filteredAgents.filter(a => agentProducing(a, mode, prevMonthIdx)).length
+    const manpower  = filteredAgents.filter(a => (a.monthly?.[MONTH_ABBRS[prevMonthIdx]]?.manpower > 0 || a.manpowerInd)).length
+    const actRatio  = manpower > 0 ? (producing / manpower) * 100 : 0
+    return { anp, fyc, actRatio }
+  }, [filteredAgents, mode, monthIdx])
 
-  // Helper to get a numeric field (month-aware)
-  function getField(a, mtdField, monthField) {
-    if (monthFilter) return a._m?.[monthField] || 0
-    return Number(a[mtdField]) || 0
+  // Trend helpers
+  function trendDir(current, prev) {
+    if (!prev || prev === 0) return 'flat'
+    if (current > prev) return 'up'
+    if (current < prev) return 'down'
+    return 'flat'
+  }
+  function trendDelta(current, prev, isCurrency = true) {
+    if (!prev || prev === 0) return ''
+    const delta = current - prev
+    const pct = Math.abs((delta / prev) * 100).toFixed(1)
+    return `${delta >= 0 ? '+' : ''}${isCurrency ? formatPeso(delta) : pct + '%'}`
   }
 
-  // Trend chart data (all 12 months, filtered by trendMetric and displayAgents)
-  const trendData = useMemo(() => {
+  // Fast Start count
+  const fastStartCount = useMemo(() => {
+    return filteredAgents.filter(a => {
+      const days = a.daysSinceAppt ?? null
+      return days !== null && days <= 90 && agentCases(a, mode, monthIdx) > 0
+    }).length
+  }, [filteredAgents, mode, monthIdx])
+
+  // Top 5 contributors
+  const topContributors = useMemo(() => {
+    return [...filteredAgents]
+      .map(a => ({ agent: a, fyp: agentFyp(a, mode, monthIdx) }))
+      .filter(x => x.fyp > 0)
+      .sort((a, b) => b.fyp - a.fyp)
+      .slice(0, 5)
+  }, [filteredAgents, mode, monthIdx])
+
+  // High Propensity: score >= 60, not yet producing this month
+  const propensityList = useMemo(() => {
+    if (mode === 'ytd') return [] // only meaningful for monthly view
+    const currentProducers = new Set(
+      filteredAgents.filter(a => getMonthCases(a, monthIdx) > 0).map(a => a.code)
+    )
+    return filteredAgents
+      .filter(a => !currentProducers.has(a.code))
+      .map(a => ({ agent: a, score: getPropensityScore(a, monthIdx, filteredAgents) }))
+      .filter(x => x.score >= 60)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+  }, [filteredAgents, mode, monthIdx])
+
+  // MAPA breakdown
+  const mapa = useMemo(() => {
+    const rookies   = filteredAgents.filter(a => a.segment === 'Rookie')
+    const seasoned  = filteredAgents.filter(a => a.segment === 'Seasoned')
+
+    const rookieManpower   = rookies.filter(a => a.manpowerInd || (a.monthly?.[MONTH_ABBRS[monthIdx]]?.manpower > 0)).length
+    const seasonedManpower = seasoned.filter(a => a.manpowerInd || (a.monthly?.[MONTH_ABBRS[monthIdx]]?.manpower > 0)).length
+    const rookieProd   = rookies.filter(a => agentProducing(a, mode, monthIdx)).length
+    const seasonedProd = seasoned.filter(a => agentProducing(a, mode, monthIdx)).length
+
+    const rookieCases   = rookies.reduce((s, a) => s + agentCases(a, mode, monthIdx), 0)
+    const seasonedCases = seasoned.reduce((s, a) => s + agentCases(a, mode, monthIdx), 0)
+    const rookieFyp     = rookies.reduce((s, a) => s + agentFyp(a, mode, monthIdx), 0)
+    const seasonedFyp   = seasoned.reduce((s, a) => s + agentFyp(a, mode, monthIdx), 0)
+
+    return {
+      manpower:     [rookieManpower, seasonedManpower],
+      actRatio:     [rookieManpower > 0 ? (rookieProd / rookieManpower) * 100 : null,
+                     seasonedManpower > 0 ? (seasonedProd / seasonedManpower) * 100 : null],
+      productivity: [rookieProd > 0 ? rookieCases / rookieProd : null,
+                     seasonedProd > 0 ? seasonedCases / seasonedProd : null],
+      avgCaseSize:  [rookieCases > 0 ? rookieFyp / rookieCases : null,
+                     seasonedCases > 0 ? seasonedFyp / seasonedCases : null],
+    }
+  }, [filteredAgents, mode, monthIdx])
+
+  // Monthly trend chart data (12 months)
+  const chartData = useMemo(() => {
     return MONTH_ABBRS.map((abbr, i) => {
-      const manpowerCnt = displayAgents.filter(a => (a.monthly?.[abbr]?.manpower || 0) > 0).length
-      const producingCnt = displayAgents.filter(a => a.monthly?.[abbr]?.producing === true).length
       let value = 0
       switch (trendMetric) {
-        case 'ANP':               value = displayAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.anp   || 0), 0); break
-        case 'FYC':               value = displayAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyc   || 0), 0); break
-        case 'FYP':               value = displayAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp   || 0), 0); break
-        case 'Cases':             value = displayAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.cases || 0), 0); break
-        case 'Producing Advisors': value = producingCnt; break
-        case 'Activity Ratio':    value = manpowerCnt > 0 ? (producingCnt / manpowerCnt) * 100 : 0; break
+        case 'FYP':   value = filteredAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp || 0), 0); break
+        case 'ANP':   value = filteredAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.anp || 0), 0); break
+        case 'FYC':   value = filteredAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyc || 0), 0); break
+        case 'Cases': value = filteredAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.cases || 0), 0); break
+        case 'Producing Advisors':
+          value = filteredAgents.filter(a => (a.monthly?.[abbr]?.cases || 0) > 0).length; break
         default: break
       }
-      return { month: MONTH_LABELS[i], abbr, value }
-    }).filter(d => d.value > 0)
-  }, [displayAgents, trendMetric])
+      return value
+    })
+  }, [filteredAgents, trendMetric])
 
-  const trendFormatter = trendMetric === 'Activity Ratio'
-    ? (v) => [`${v.toFixed(1)}%`, trendMetric]
-    : ['ANP', 'FYC', 'FYP'].includes(trendMetric)
-      ? (v) => [formatCurrency(v, true), trendMetric]
-      : (v) => [formatNumber(Math.round(v)), trendMetric]
+  // Targets (monthly portion = annual / 12 as fallback)
+  const monthlyFypTarget  = targets?.fyp_annual  ? targets.fyp_annual / 12  : 0
+  const monthlyProdTarget = targets?.producing_monthly || 0
+  const monthlyCasesTarget = targets?.cases_annual ? targets.cases_annual / 12 : 0
 
-  if (!isLoaded) {
-    navigate('/')
-    return null
-  }
-
-  // Manpower = only agents with manpowerInd === true (MTD) or monthly manpower > 0
-  const manpowerAgents    = monthFilter
-    ? agentsWithMonth.filter(a => (a._m?.manpower || 0) > 0)
-    : displayAgents.filter(a => a.manpowerInd)
-  const totalManpower     = manpowerAgents.length
-  const producingAdvisors = monthFilter
-    ? agentsWithMonth.filter(a => a._m?.producing).length
-    : displayAgents.filter(a => a.isProducing).length
-
-  // KPIs
-  const anpMtd      = agentsWithMonth.reduce((s,a) => s + getField(a,'anpMtd','anp'), 0)
-  const fycMtd      = agentsWithMonth.reduce((s,a) => s + getField(a,'fycMtd','fyc'), 0)
-  const fypTotal    = agentsWithMonth.reduce((s,a) => s + getField(a,'fypTotal','fyp'), 0)
-  const totalCases  = agentsWithMonth.reduce((s,a) => s + getField(a,'casesTotal','cases'), 0)
-  const casesAh     = monthFilter ? 0 : sumField(displayAgents, 'casesAh')
-
-  // Activity Ratio by segment (producing / manpower for that segment)
-  const rookieAgents   = agentsWithMonth.filter(a => a.segment === 'Rookie')
-  const seasonedAgents = agentsWithMonth.filter(a => a.segment === 'Seasoned')
-
-  const rookieManpower = monthFilter
-    ? rookieAgents.filter(a => (a._m?.manpower||0) > 0).length
-    : displayAgents.filter(a => a.segment === 'Rookie' && a.manpowerInd).length
-  const seasonedManpower = monthFilter
-    ? seasonedAgents.filter(a => (a._m?.manpower||0) > 0).length
-    : displayAgents.filter(a => a.segment === 'Seasoned' && a.manpowerInd).length
-  const rookieProducing = monthFilter
-    ? rookieAgents.filter(a => a._m?.producing).length
-    : displayAgents.filter(a => a.segment === 'Rookie' && a.isProducing).length
-  const seasonedProducing = monthFilter
-    ? seasonedAgents.filter(a => a._m?.producing).length
-    : displayAgents.filter(a => a.segment === 'Seasoned' && a.isProducing).length
-
-  const rookieActRatio   = rookieManpower   > 0 ? (rookieProducing   / rookieManpower)   * 100 : null
-  const seasonedActRatio = seasonedManpower > 0 ? (seasonedProducing / seasonedManpower) * 100 : null
-
-  // MAPA metrics per segment
-  const rookieCases    = rookieAgents.reduce((s,a)   => s + getField(a,'casesTotal','cases'), 0)
-  const seasonedCases  = seasonedAgents.reduce((s,a) => s + getField(a,'casesTotal','cases'), 0)
-  const rookieAnp      = rookieAgents.reduce((s,a)   => s + getField(a,'anpMtd','anp'), 0)
-  const seasonedAnp    = seasonedAgents.reduce((s,a) => s + getField(a,'anpMtd','anp'), 0)
-
-  const rookieProductivity   = rookieProducing   > 0 ? rookieCases   / rookieProducing   : null
-  const seasonedProductivity = seasonedProducing > 0 ? seasonedCases / seasonedProducing : null
-
-  const rookieAvgCaseSize   = rookieCases   > 0 ? rookieAnp   / rookieCases   : null
-  const seasonedAvgCaseSize = seasonedCases > 0 ? seasonedAnp / seasonedCases : null
-
-  // Chart: Manpower by Area
-  const areaManpower = Object.entries(AREA_COLORS).map(([areaKey, color]) => ({
-    name: areaKey === 'SCM2 (Davao)' ? 'Davao' : 'Gensan',
-    value: monthFilter
-      ? agentsWithMonth.filter(ag => ag.area === areaKey && (ag._m?.manpower||0) > 0).length
-      : displayAgents.filter(ag => ag.area === areaKey && ag.manpowerInd).length,
-    color,
-  })).filter(d => d.value > 0)
-
-  // Chart: Manpower by Segment
-  const segmentCounts = ['Rookie', 'Seasoned'].map(seg => ({
-    name: seg,
-    value: monthFilter
-      ? agentsWithMonth.filter(a => a.segment === seg && (a._m?.manpower||0) > 0).length
-      : displayAgents.filter(a => a.segment === seg && a.manpowerInd).length,
-    color: SEGMENT_COLORS[seg],
-  })).filter(d => d.value > 0)
-
-  const uploadDateStr = data.uploadDate
-    ? new Date(data.uploadDate).toLocaleDateString('en-PH', {
-        year: 'numeric', month: 'long', day: 'numeric',
-      })
+  const uploadDateStr = data?.uploadDate
+    ? new Date(data.uploadDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
     : null
 
-  const monthLabel = monthFilter ? MONTH_LABELS[MONTH_ABBRS.indexOf(monthFilter)] : 'MTD'
+  if (!isLoaded) return null
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6">
+    <div className="min-h-screen pb-4" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
+      <div className="max-w-screen-xl mx-auto px-4 py-5 flex flex-col gap-5">
 
-        {/* Page header */}
-        <div className="animate-fade-in-up flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold text-[#333D47] tracking-tight">Agency Overview</h1>
-            {uploadDateStr && (
-              <p className="text-xs text-[#848A90] mt-1 font-medium">Data as of {uploadDateStr}</p>
-            )}
+        {/* Page title */}
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h1 className="text-xl" style={{ fontFamily: 'AIA Everest', fontWeight: 800, color: '#1C1C28' }}>
+            Agency Overview
+          </h1>
+          {uploadDateStr && (
+            <p className="text-[11px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              Data as of {uploadDateStr}
+            </p>
+          )}
+        </div>
+
+        {/* 1. Period Controls */}
+        <PeriodControl
+          value={period}
+          onChange={setPeriod}
+          showAreaFilter
+          area={area}
+          onAreaChange={setArea}
+        />
+
+        {/* 2. Goal Thermometers */}
+        {(monthlyFypTarget > 0 || monthlyProdTarget > 0 || monthlyCasesTarget > 0) && (
+          <section>
+            <SectionHeader title="Monthly Goals" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+              <ThermometerCard
+                title="FYP vs Target"
+                actual={kpis.totalFyp}
+                target={monthlyFypTarget}
+              />
+              <ThermometerCard
+                title="Producing Advisors"
+                actual={kpis.producing}
+                target={monthlyProdTarget}
+                format="number"
+              />
+              <ThermometerCard
+                title="Cases vs Target"
+                actual={kpis.totalCases}
+                target={monthlyCasesTarget}
+                format="number"
+              />
+            </div>
+          </section>
+        )}
+
+        {/* 3. Alert Strip */}
+        <AlertStrip count={fastStartCount} onClick={() => navigate('/activation')} />
+
+        {/* 4. Agency Pulse KPIs */}
+        <section>
+          <SectionHeader title="Agency Pulse" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <KpiCard
+              title="ANP"
+              value={formatPeso(kpis.totalAnp)}
+              monospace
+              trend={prevKpis ? {
+                value: trendDelta(kpis.totalAnp, prevKpis.anp),
+                direction: trendDir(kpis.totalAnp, prevKpis.anp),
+              } : undefined}
+            />
+            <KpiCard
+              title="FYC"
+              value={formatPeso(kpis.totalFyc)}
+              monospace
+              trend={prevKpis ? {
+                value: trendDelta(kpis.totalFyc, prevKpis.fyc),
+                direction: trendDir(kpis.totalFyc, prevKpis.fyc),
+              } : undefined}
+            />
+            <KpiCard
+              title="Activity Ratio"
+              value={formatPct(kpis.actRatio)}
+              monospace
+              trend={prevKpis ? {
+                value: trendDelta(kpis.actRatio, prevKpis.actRatio, false),
+                direction: trendDir(kpis.actRatio, prevKpis.actRatio),
+              } : undefined}
+            />
+            <KpiCard
+              title="A&H Cases"
+              value={String(Math.round(kpis.casesAh))}
+              monospace
+            />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Month picker */}
-            <div className="flex gap-1 bg-white rounded-lg p-1 shadow-sm border border-[#D6D8DA] flex-wrap">
-              <button
-                onClick={() => setMonthFilter(null)}
-                className={[
-                  'px-3 py-1.5 rounded-md text-xs font-bold transition-colors duration-150',
-                  monthFilter === null ? 'bg-[#D31145] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100',
-                ].join(' ')}
-              >
-                MTD
-              </button>
-              {AVAILABLE_MONTHS.map((abbr, i) => (
+        </section>
+
+        {/* 5 & 6. Top Contributors + High Propensity */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Top Contributors */}
+          <section>
+            <SectionHeader title="Top Contributors" action={{ label: 'See all', onClick: () => navigate('/agents') }} />
+            <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+              {topContributors.length === 0 ? (
+                <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
+                  No production data for this period
+                </p>
+              ) : topContributors.map(({ agent, fyp }, i) => (
+                <TopContributorRow key={agent.code || i} rank={i + 1} agent={agent} fyp={fyp} />
+              ))}
+            </div>
+          </section>
+
+          {/* High Propensity */}
+          <section>
+            <SectionHeader title="High Propensity" />
+            <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+              {mode === 'ytd' ? (
+                <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
+                  Switch to Monthly view to see propensity scores
+                </p>
+              ) : propensityList.length === 0 ? (
+                <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
+                  No high-propensity advisors found
+                </p>
+              ) : propensityList.map(({ agent, score }) => (
+                <PropensityRow key={agent.code} agent={agent} score={score} />
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* 7. MAPA Breakdown */}
+        <section>
+          <SectionHeader title="MAPA Breakdown" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <MapaCard label="Manpower"      rookieVal={mapa.manpower[0]}     seasonedVal={mapa.manpower[1]}     format="number" />
+            <MapaCard label="Activity Ratio" rookieVal={mapa.actRatio[0]}    seasonedVal={mapa.actRatio[1]}    format="percent" />
+            <MapaCard label="Productivity"  rookieVal={mapa.productivity[0]} seasonedVal={mapa.productivity[1]} format="number" />
+            <MapaCard label="Avg Case Size" rookieVal={mapa.avgCaseSize[0]}  seasonedVal={mapa.avgCaseSize[1]}  format="currency" />
+          </div>
+        </section>
+
+        {/* 8. Monthly Trend Chart */}
+        <section>
+          <SectionHeader title="Monthly Trend" />
+          <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            <div className="flex gap-1.5 flex-wrap mb-4">
+              {METRIC_OPTIONS.map(m => (
                 <button
-                  key={abbr}
-                  onClick={() => setMonthFilter(abbr)}
-                  className={[
-                    'px-3 py-1.5 rounded-md text-xs font-bold transition-colors duration-150',
-                    monthFilter === abbr ? 'bg-[#D31145] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100',
-                  ].join(' ')}
+                  key={m}
+                  onClick={() => setTrendMetric(m)}
+                  className="px-3 py-1 rounded text-xs transition-colors duration-150"
+                  style={{
+                    fontFamily: 'AIA Everest', fontWeight: trendMetric === m ? 700 : 500,
+                    backgroundColor: trendMetric === m ? '#D31145' : 'transparent',
+                    color: trendMetric === m ? '#fff' : 'var(--char-60,#6B7180)',
+                    border: `1px solid ${trendMetric === m ? '#D31145' : 'var(--border,#E8E9ED)'}`,
+                  }}
                 >
-                  {MONTH_LABELS[i]}
+                  {m}
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
-              <span className="bg-white border border-[#D6D8DA] text-[#848A90] text-xs font-semibold px-3 py-1.5 rounded-full">
-                {totalManpower} manpower
-              </span>
-              <span className="bg-white border border-[#D6D8DA] text-[#848A90] text-xs font-semibold px-3 py-1.5 rounded-full">
-                {data.units?.length ?? 0} units
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 sm:gap-6 animate-fade-in-up delay-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#D31145]">Area</span>
-            <div className="flex gap-1.5 flex-wrap">
-              {AREAS.map(({ label, key }) => (
-                <FilterPill key={key} active={area === key} onClick={() => setArea(key)}>{label}</FilterPill>
-              ))}
-            </div>
-          </div>
-          <div className="hidden sm:block w-px bg-[#D6D8DA]" />
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#848A90]">Segment</span>
-            <div className="flex gap-1.5 flex-wrap">
-              {SEGMENTS.map(({ label, key }) => (
-                <FilterPill key={key} active={segment === key} onClick={() => setSegment(key)}>{label}</FilterPill>
-              ))}
-            </div>
-          </div>
-          <div className="hidden sm:block w-px bg-[#D6D8DA]" />
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#848A90]">Unit</span>
-            <select
-              value={unitFilter}
-              onChange={e => setUnitFilter(e.target.value)}
-              className="h-7 px-2 rounded-lg border border-[#D6D8DA] bg-white text-xs text-[#333D47] focus:outline-none focus:ring-2 focus:ring-[#D31145]/30 focus:border-[#D31145] cursor-pointer"
-            >
-              {unitOptions.map(u => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* KPI Cards */}
-        <section>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-            <KpiCard title={`ANP ${monthLabel}`}  value={formatCurrency(anpMtd, true)}   color="red"   className="delay-1" />
-            <KpiCard title={`FYC ${monthLabel}`}  value={formatCurrency(fycMtd, true)}   color="red"   className="delay-2" />
-            <KpiCard title={`FYP ${monthLabel}`}  value={formatCurrency(fypTotal, true)} color="red"   className="delay-3" />
-            <KpiCard title="Manpower"           value={formatNumber(totalManpower)}     color="blue"  className="delay-4" />
-            <KpiCard title="Producing Advisors" value={formatNumber(producingAdvisors)} color="green" className="delay-5"
-              subtitle={totalManpower > 0
-                ? `${Math.round(producingAdvisors / totalManpower * 100)}% of manpower`
-                : undefined}
+            <MonthlyBarChart
+              data={chartData}
+              currentMonthIdx={monthIdx}
+              metric={trendMetric}
+              height={160}
             />
-            <KpiCard title="Total Cases"        value={formatNumber(totalCases)}       color="gray"  className="delay-6" />
-            <KpiCard title="A&H Cases"          value={formatNumber(casesAh)}          color="gray"  className="delay-7" />
-          </div>
-        </section>
-
-        {/* ── MAPA Section ─────────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center gap-3 mb-3">
-            <h2 className="text-sm font-bold text-[#333D47] uppercase tracking-widest">MAPA</h2>
-            <span className="text-xs text-[#848A90] font-medium">Manpower · Activity · Productivity · Avg Case Size</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <MapaCard
-              label="M — Manpower"
-              rookieVal={rookieManpower}
-              seasonedVal={seasonedManpower}
-              format="number"
-            />
-            <MapaCard
-              label="A — Activity Ratio"
-              rookieVal={rookieActRatio}
-              seasonedVal={seasonedActRatio}
-              format="percent"
-            />
-            <MapaCard
-              label="P — Productivity"
-              rookieVal={rookieProductivity}
-              seasonedVal={seasonedProductivity}
-              format="number"
-              suffix=" cases"
-            />
-            <MapaCard
-              label="A — Avg Case Size"
-              rookieVal={rookieAvgCaseSize}
-              seasonedVal={seasonedAvgCaseSize}
-              format="currency"
-            />
-          </div>
-        </section>
-
-        {/* Charts */}
-        <section>
-          <div className="flex flex-col gap-4 sm:gap-6">
-
-            {/* Monthly Trend — full width */}
-            <ChartCard title="Monthly Trend">
-              <div className="flex flex-wrap gap-1 mb-2">
-                {['ANP','FYC','FYP','Cases','Producing Advisors','Activity Ratio'].map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setTrendMetric(m)}
-                    className={[
-                      'px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all',
-                      trendMetric === m
-                        ? 'bg-[#D31145] text-white border-[#D31145]'
-                        : 'text-[#848A90] border-[#D6D8DA] hover:border-[#D31145] hover:text-[#D31145]'
-                    ].join(' ')}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              {trendData.length === 0 ? (
-                <div className="h-52 flex items-center justify-center text-xs text-[#848A90]">
-                  No monthly data available
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={trendData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#848A90' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#848A90' }} axisLine={false} tickLine={false}
-                      tickFormatter={v => ['ANP','FYC','FYP'].includes(trendMetric) ? formatCurrency(v, true) : trendMetric === 'Activity Ratio' ? `${v.toFixed(0)}%` : v}
-                      width={58} />
-                    <Tooltip formatter={trendFormatter} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <Line type="monotone" dataKey="value" name={trendMetric} stroke={AIA_RED} strokeWidth={2.5}
-                      dot={{ r: 4, fill: AIA_RED, strokeWidth: 0 }} activeDot={{ r: 6, fill: AIA_RED }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </ChartCard>
-
-            {/* Manpower charts — side by side, compact */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <ChartCard title="Manpower by Area">
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={areaManpower} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                      innerRadius={40} outerRadius={62} paddingAngle={4}
-                      label={({ name, value, percent }) =>
-                        `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
-                      labelLine={false}>
-                      {areaManpower.map(entry => <Cell key={entry.name} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip formatter={(v, name) => [v + ' advisors', name]}
-                      contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="Manpower by Segment">
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={segmentCounts} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                      innerRadius={40} outerRadius={62} paddingAngle={4}
-                      label={({ name, value, percent }) =>
-                        `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
-                      labelLine={false}>
-                      {segmentCounts.map(entry => <Cell key={entry.name} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip formatter={(v, name) => [v + ' advisors', name]}
-                      contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCard>
-            </div>
-
           </div>
         </section>
 

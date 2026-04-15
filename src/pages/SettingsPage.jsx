@@ -27,7 +27,7 @@ export default function SettingsPage() {
   async function handleSave() {
     setSaveError(null)
     try {
-      await saveTargetsCtx?.({
+      await saveTargetsCtx({
         fyp_annual:        Number(fypTarget)  || 0,
         cases_annual:      Number(caseTarget) || 0,
         producing_monthly: Number(prodTarget) || 0,

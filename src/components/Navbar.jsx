@@ -52,16 +52,23 @@ const Icons = {
       <path d="M7 1v8M4 4l3-3 3 3M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2" />
     </svg>
   ),
+  settings: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="2.5" />
+      <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" />
+    </svg>
+  ),
 };
 
 // Tab definitions
 const TABS = [
-  { key: 'overview',     label: 'Overview',    icon: Icons.overview,     path: '/overview',       activePaths: ['/overview'] },
-  { key: 'team',         label: 'Team',         icon: Icons.team,         path: '/agents',         activePaths: ['/agents', '/units', '/activation'] },
-  { key: 'rankings',     label: 'Rankings',     icon: Icons.rankings,     path: '/leaderboard',    activePaths: ['/leaderboard'] },
-  { key: 'targets',      label: 'Targets',      icon: Icons.targets,      path: '/targets',        activePaths: ['/targets'] },
-  { key: 'recognition',  label: 'Recognition',  icon: Icons.recognition,  path: '/recognition',    activePaths: ['/recognition'], badge: true },
-  { key: 'more',         label: 'More',         icon: Icons.more,         path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
+  { key: 'overview',    label: 'Overview',    icon: Icons.overview,    path: '/overview',       activePaths: ['/overview'] },
+  { key: 'team',        label: 'Team',        icon: Icons.team,        path: '/agents',         activePaths: ['/agents', '/units', '/activation'] },
+  { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard',    activePaths: ['/leaderboard'] },
+  { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',          activePaths: ['/goals', '/targets'] },
+  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition',    activePaths: ['/recognition'], badge: true },
+  { key: 'more',        label: 'More',        icon: Icons.more,        path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
+  { key: 'settings',    label: 'Settings',    icon: Icons.settings,    path: '/settings',       activePaths: ['/settings'] },
 ];
 
 // Bottom nav (5 items, condensed)
@@ -69,7 +76,7 @@ const BOTTOM_TABS = [
   { key: 'overview',    label: 'Overview',    icon: Icons.overview,    path: '/overview',    activePaths: ['/overview'] },
   { key: 'team',        label: 'Team',        icon: Icons.team,        path: '/agents',      activePaths: ['/agents', '/units', '/activation'] },
   { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard', activePaths: ['/leaderboard'] },
-  { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/targets',     activePaths: ['/targets'] },
+  { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',       activePaths: ['/goals', '/targets'] },
   { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition', activePaths: ['/recognition'], badge: true },
 ];
 

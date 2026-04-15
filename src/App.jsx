@@ -14,6 +14,7 @@ import AwardsPage from './pages/AwardsPage'
 import AgentProfilePage from './pages/AgentProfilePage'
 import UnitProfilePage from './pages/UnitProfilePage'
 import RecognitionPage from './pages/RecognitionPage'
+import SettingsPage from './pages/SettingsPage'
 
 // Redirects to / if data is not loaded; shows nothing while Supabase is loading
 function RequireData({ children }) {
@@ -57,7 +58,9 @@ export default function App() {
           <Route path="/monthly"         element={<Navigate to="/leaderboard" replace />} />
           <Route path="/quarterly-bonus" element={<WithNavbar><QuarterlyBonusPage /></WithNavbar>} />
           <Route path="/activation"      element={<WithNavbar><ActivationPage /></WithNavbar>} />
-          <Route path="/targets"         element={<WithNavbar><TargetsPage /></WithNavbar>} />
+          <Route path="/goals"    element={<WithNavbar><TargetsPage /></WithNavbar>} />
+          <Route path="/targets"  element={<Navigate to="/goals" replace />} />
+          <Route path="/settings" element={<WithNavbar><SettingsPage /></WithNavbar>} />
           <Route path="/units"           element={<WithNavbar><UnitsPage /></WithNavbar>} />
           <Route path="/agents"          element={<WithNavbar><AgentsPage /></WithNavbar>} />
           <Route path="/awards"          element={<WithNavbar><AwardsPage /></WithNavbar>} />

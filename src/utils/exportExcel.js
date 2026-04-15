@@ -1,4 +1,10 @@
 import * as XLSX from 'xlsx'
+import { MONTH_ABBRS, MONTH_LABELS, CURRENT_YEAR } from '../constants'
+import {
+  getTopRookies, getTopOverall,
+  getMostTrustedAdvisors, getMostProductiveAdvisors,
+  getConsistentProducers,
+} from './awardHelpers'
 
 function downloadWorkbook(wb, filename) {
   XLSX.writeFile(wb, filename)
@@ -325,4 +331,188 @@ export function exportAgents(agents) {
 
   XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No agents' }])), 'All Advisors')
   downloadWorkbook(wb, 'Davao-Amora-Agents.xlsx')
+}
+
+// ─── exportFullReport: full 6-sheet workbook ─────────────────────────────────
+
+export function exportFullReport(data, targets, monthIdx) {
+  const agents   = (data?.agents ?? []).filter(a => a.manpowerInd)
+  const abbr     = MONTH_ABBRS[monthIdx]
+  const mdrtGoal = targets?.mdrt_goal || 3518400
+  const wb       = XLSX.utils.book_new()
+
+  // ── Sheet 1: Overview — monthly KPIs Jan → monthIdx
+  {
+    const rows = [['Month','Producing','FYP','FYC','Cases','Avg Persistency (%)','Case Rate']]
+    MONTH_ABBRS.slice(0, monthIdx + 1).forEach((a, i) => {
+      const producing = agents.filter(ag => ag.monthly?.[a]?.producing).length
+      const fyp       = agents.reduce((s, ag) => s + (ag.monthly?.[a]?.fyp   || 0), 0)
+      const fyc       = agents.reduce((s, ag) => s + (ag.monthly?.[a]?.fyc   || 0), 0)
+      const cases     = agents.reduce((s, ag) => s + (ag.monthly?.[a]?.cases || 0), 0)
+      const persVals  = agents.map(ag => ag.monthly?.[a]?.persistency).filter(v => v != null && !isNaN(v))
+      const persAvg   = persVals.length > 0 ? persVals.reduce((s, v) => s + v, 0) / persVals.length : null
+      const caseRate  = producing > 0 ? (cases / producing) : null
+      rows.push([
+        MONTH_LABELS[i], producing,
+        fyp, fyc, cases,
+        persAvg != null ? Number(persAvg.toFixed(1)) : '—',
+        caseRate != null ? Number(caseRate.toFixed(2)) : '—',
+      ])
+    })
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Overview')
+  }
+
+  // ── Sheet 2: Team Rankings
+  {
+    const rows = [['Unit','Headcount','FYP (Month)','YTD FYP','Cases (Month)','New Recruits (Month)']]
+    const unitMap = new Map()
+    agents.forEach(a => {
+      const key = a.unitCode || '__UNASSIGNED__'
+      if (!unitMap.has(key)) unitMap.set(key, { name: a.unitName || key, agents: [] })
+      unitMap.get(key).agents.push(a)
+    })
+    const unitRows = Array.from(unitMap.values()).map(u => ({
+      name: u.name,
+      headcount: u.agents.length,
+      fyp:   u.agents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp   || 0), 0),
+      ytdFyp: u.agents.reduce((s, a) => {
+        return s + MONTH_ABBRS.slice(0, monthIdx + 1).reduce((ss, ab) => ss + (a.monthly?.[ab]?.fyp || 0), 0)
+      }, 0),
+      cases: u.agents.reduce((s, a) => s + (a.monthly?.[abbr]?.cases || 0), 0),
+      newRecruits: u.agents.filter(a => a.monthly?.[abbr]?.isNewRecruit).length,
+    })).sort((a, b) => b.fyp - a.fyp)
+    unitRows.forEach(u => rows.push([u.name, u.headcount, u.fyp, u.ytdFyp, u.cases, u.newRecruits]))
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Team Rankings')
+  }
+
+  // ── Sheet 3: Advisor Rankings (Top 20 by month FYP)
+  {
+    const rows = [['Rank','Advisor','Unit','Segment','FYP','FYC','Cases','ANP']]
+    const sorted = [...agents]
+      .sort((a, b) => (b.monthly?.[abbr]?.fyp || 0) - (a.monthly?.[abbr]?.fyp || 0))
+      .slice(0, 20)
+    sorted.forEach((a, i) => rows.push([
+      i + 1, a.name, a.unitName || '—', a.segment,
+      a.monthly?.[abbr]?.fyp   || 0,
+      a.monthly?.[abbr]?.fyc   || 0,
+      a.monthly?.[abbr]?.cases || 0,
+      a.monthly?.[abbr]?.anp   || 0,
+    ]))
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Advisor Rankings')
+  }
+
+  // ── Sheet 4: Goals
+  {
+    const rows = []
+    rows.push(['Agency Ace Award Progress'], ['Metric','Target','YTD Actual','% of Target'])
+    const ytdFyc   = agents.reduce((s, a) => s + MONTH_ABBRS.slice(0, monthIdx + 1).reduce((ss, ab) => ss + (a.monthly?.[ab]?.fyc || 0), 0), 0)
+    const ytdCases = agents.reduce((s, a) => s + MONTH_ABBRS.slice(0, monthIdx + 1).reduce((ss, ab) => ss + (a.monthly?.[ab]?.cases || 0), 0), 0)
+    const persVals = agents.flatMap(a => MONTH_ABBRS.slice(0, monthIdx + 1).map(ab => a.monthly?.[ab]?.persistency).filter(v => v != null && !isNaN(v)))
+    const persAvg  = persVals.length > 0 ? persVals.reduce((s, v) => s + v, 0) / persVals.length : 0
+    rows.push(['FYC', 300000, ytdFyc, Number(((ytdFyc / 300000) * 100).toFixed(1))])
+    rows.push(['Cases', 24, ytdCases, Number(((ytdCases / 24) * 100).toFixed(1))])
+    rows.push(['Persistency (%)', 82.5, Number(persAvg.toFixed(1)), Number(((persAvg / 82.5) * 100).toFixed(1))])
+    rows.push([])
+    rows.push(['Annual Targets'])
+    rows.push(['FYP Annual Target', targets?.fyp_annual || 0])
+    rows.push(['Cases Annual Target', targets?.cases_annual || 0])
+    rows.push(['Monthly Producing Target', targets?.producing_monthly || 0])
+    rows.push(['MDRT Goal', targets?.mdrt_goal || mdrtGoal])
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Goals')
+  }
+
+  // ── Sheet 5: Recognition
+  {
+    const rows = []
+    const mn = MONTH_ABBRS[monthIdx]
+
+    rows.push([`Birthdays — ${MONTH_LABELS[monthIdx]}`], ['Name','Unit','Birth Date'])
+    agents
+      .filter(a => a.birthDate && new Date(a.birthDate).getMonth() === monthIdx)
+      .forEach(a => rows.push([a.name, a.unitName || '—', a.birthDate]))
+    rows.push([])
+
+    rows.push([`New Advisors — ${MONTH_LABELS[monthIdx]}`], ['Name','Unit','Appointment Date'])
+    agents
+      .filter(a => a.appointmentDate && new Date(a.appointmentDate).getMonth() === monthIdx)
+      .forEach(a => rows.push([a.name, a.unitName || '—', a.appointmentDate]))
+    rows.push([])
+
+    rows.push(['Top 5 Rookie Advisors'], ['Rank','Name','Unit','Score','FYP','Cases','ANP'])
+    getTopRookies(agents, mn, 5).forEach((r, i) =>
+      rows.push([i+1, r.agent.name, r.agent.unitName||'—', Number(r.combinedScore.toFixed(4)), r.fyp, r.cases, r.anp])
+    )
+    rows.push([])
+
+    rows.push(['Top 5 Overall Advisors'], ['Rank','Name','Unit','Score','FYP','Cases','ANP'])
+    getTopOverall(agents, mn, 5).forEach((r, i) =>
+      rows.push([i+1, r.agent.name, r.agent.unitName||'—', Number(r.combinedScore.toFixed(4)), r.fyp, r.cases, r.anp])
+    )
+    rows.push([])
+
+    rows.push(['Most Trusted Advisors (MTA)'], ['Rank','Name','Unit','Cases','FYP','FYC'])
+    getMostTrustedAdvisors(agents, mn).forEach((r, i) =>
+      rows.push([i+1, r.agent.name, r.agent.unitName||'—', r.cases, r.fyp, r.fyc])
+    )
+    rows.push([])
+
+    rows.push(['Most Productive Advisors (MPA)'], ['Rank','Name','Unit','FYC','FYP','Cases'])
+    getMostProductiveAdvisors(agents, mn).forEach((r, i) =>
+      rows.push([i+1, r.agent.name, r.agent.unitName||'—', r.fyc, r.fyp, r.cases])
+    )
+    rows.push([])
+
+    rows.push(['Consistent Monthly Producers (No Gaps)'], ['Rank','Name','Unit','Months Producing','Total Months'])
+    getConsistentProducers(agents, monthIdx, true).forEach((r, i) =>
+      rows.push([i+1, r.agent.name, r.agent.unitName||'—', r.producingMonths, r.totalMonths])
+    )
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Recognition')
+  }
+
+  // ── Sheet 6: Agency Targets
+  {
+    const annualFyp   = targets?.fyp_annual  || 0
+    const annualCases = targets?.cases_annual || 0
+    const fypActuals  = MONTH_ABBRS.map(ab => agents.reduce((s, a) => s + (a.monthly?.[ab]?.fyp || 0), 0))
+    const caseActuals = MONTH_ABBRS.map(ab => agents.reduce((s, a) => s + (a.monthly?.[ab]?.cases || 0), 0))
+
+    const rollingFyp = (() => {
+      const t = new Array(12).fill(0); let cum = 0
+      for (let i = 0; i < 11; i++) { t[i] = Math.max(0, (annualFyp - cum) / (11 - i)); cum += fypActuals[i] || 0 }
+      return t
+    })()
+    const rollingCase = (() => {
+      const t = new Array(12).fill(0); let cum = 0
+      for (let i = 0; i < 11; i++) { t[i] = Math.max(0, (annualCases - cum) / (11 - i)); cum += caseActuals[i] || 0 }
+      return t
+    })()
+
+    const rows = [
+      ['Agency Targets', CURRENT_YEAR],
+      ['FYP Annual Target', annualFyp],
+      ['Cases Annual Target', targets?.cases_annual || 0],
+      ['Monthly Producing Target', targets?.producing_monthly || 0],
+      ['MDRT Goal', targets?.mdrt_goal || mdrtGoal],
+      [],
+      ['Monthly FYP Breakdown'],
+      ['Month', 'Rolling FYP Target', 'Actual FYP', 'Rolling Case Target', 'Actual Cases'],
+      ...MONTH_ABBRS.map((ab, i) => [MONTH_LABELS[i], rollingFyp[i], fypActuals[i], rollingCase[i], caseActuals[i]]),
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Agency Targets')
+  }
+
+  downloadWorkbook(wb, `Amora-Dashboard-Report-${MONTH_ABBRS[monthIdx]}-${CURRENT_YEAR}.xlsx`)
 }

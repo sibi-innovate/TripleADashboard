@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { supabase } from '../lib/supabase';
 import { CURRENT_MONTH_IDX, MONTH_ABBRS } from '../constants';
+import { exportFullReport } from '../utils/exportExcel';
 
 // SVG icon set — AIA Qi monoline style, 16×16 viewBox
 const Icons = {
@@ -58,6 +59,11 @@ const Icons = {
       <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" />
     </svg>
   ),
+  download: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 1v8M4 9l3 3 3-3M2 11v1a1 1 0 001 1h8a1 1 0 001-1v-1" />
+    </svg>
+  ),
 };
 
 // Tab definitions
@@ -87,7 +93,7 @@ function isTabActive(tab, pathname) {
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { data } = useData();
+  const { data, targets } = useData();
   const agents = data?.agents;
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -152,15 +158,29 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Upload button */}
-          <button
-            onClick={handleUpload}
-            className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150 flex-shrink-0"
-            style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
-          >
-            {Icons.upload}
-            Upload
-          </button>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Download Report button — only shown when data is loaded */}
+            {data && (
+              <button
+                onClick={() => exportFullReport(data, targets, CURRENT_MONTH_IDX)}
+                className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150"
+                style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
+              >
+                {Icons.download}
+                Download Report
+              </button>
+            )}
+            {/* Upload button */}
+            <button
+              onClick={handleUpload}
+              className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150"
+              style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
+            >
+              {Icons.upload}
+              Upload
+            </button>
+          </div>
         </div>
 
         {/* Tab bar — scrollable */}

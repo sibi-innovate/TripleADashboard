@@ -426,7 +426,7 @@ function RankScoreList({ items, title, abbr }) {
           <div key={item.agent.code} className="bg-white rounded-xl p-4 flex items-center gap-3"
             style={{ border: '1px solid #E8E9ED' }}>
             <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
-              style={{ backgroundColor: i === 0 ? '#C97B1A' : i === 1 ? '#B0B3BC' : i === 2 ? '#C97B1A' : '#D31145', fontFamily: 'AIA Everest' }}>
+              style={{ backgroundColor: i === 0 ? '#C97B1A' : i === 1 ? '#B0B3BC' : i === 2 ? '#CD7F32' : '#D31145', fontFamily: 'AIA Everest' }}>
               {i + 1}
             </div>
             <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold text-white"

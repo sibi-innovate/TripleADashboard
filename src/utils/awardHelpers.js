@@ -42,8 +42,10 @@ export function computeRankScore(agents, monthAbbr) {
   const rankBy = (arr, key) => {
     const sorted = [...arr].sort((a, b) => b[key] - a[key] || b.fyp - a.fyp)
     const rankMap = new Map()
+    let rank = 1
     sorted.forEach((item, i) => {
-      if (!rankMap.has(item.agent.code)) rankMap.set(item.agent.code, i + 1)
+      if (i > 0 && sorted[i][key] !== sorted[i - 1][key]) rank = i + 1
+      rankMap.set(item.agent.code, rank)
     })
     return rankMap
   }

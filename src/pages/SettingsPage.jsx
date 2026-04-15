@@ -1,6 +1,7 @@
 // SettingsPage — agency configuration (targets, MDRT goal)
 import { useState, useEffect } from 'react'
 import { useData } from '../context/DataContext'
+import { supabase } from '../lib/supabase'
 import { formatCurrency, formatNumber } from '../utils/formatters'
 import { CURRENT_YEAR, MDRT_GOAL_DEFAULT } from '../constants'
 
@@ -12,7 +13,18 @@ export default function SettingsPage() {
   const [prodTarget, setProdTarget] = useState('')
   const [mdrtGoal,   setMdrtGoal]   = useState('')
   const [saved,      setSaved]      = useState(false)
+  const [saving,     setSaving]     = useState(false)
   const [saveError,  setSaveError]  = useState(null)
+  const [user,       setUser]       = useState(undefined) // undefined = checking
+
+  // Watch auth state
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user: u } }) => setUser(u ?? null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   useEffect(() => { loadTargets?.(CURRENT_YEAR) }, [])
   useEffect(() => {
@@ -26,6 +38,7 @@ export default function SettingsPage() {
 
   async function handleSave() {
     setSaveError(null)
+    setSaving(true)
     try {
       await saveTargetsCtx({
         fyp_annual:        Number(fypTarget)  || 0,
@@ -35,9 +48,16 @@ export default function SettingsPage() {
         agency_fyp_target: Number(fypTarget)  || 0,
       }, CURRENT_YEAR)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      setTimeout(() => setSaved(false), 3000)
     } catch (err) {
-      setSaveError(err?.message || 'Failed to save. Check your connection.')
+      const msg = err?.message || ''
+      if (msg.includes('row-level security') || msg.includes('policy')) {
+        setSaveError('Permission denied. Run the RLS policy SQL in your Supabase dashboard first (see CLAUDE.md or ask your admin).')
+      } else {
+        setSaveError(msg || 'Failed to save. Check your connection.')
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -121,17 +141,39 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Auth guard */}
+          {user === null && (
+            <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+              ⚠️ You must be <strong>logged in</strong> to save settings. Use the Upload page to sign in.
+            </div>
+          )}
+
           <div className="flex items-center gap-4 flex-wrap">
             <button
               onClick={handleSave}
-              disabled={targetsLoading}
-              className="bg-[#D31145] text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-[#b80e3a] transition-colors duration-150 disabled:opacity-50"
+              disabled={saving || targetsLoading || user === null || user === undefined}
+              className="bg-[#D31145] text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-[#b80e3a] transition-colors duration-150 disabled:opacity-50 min-w-[120px] flex items-center justify-center gap-2"
             >
-              Save Settings
+              {saving ? (
+                <>
+                  <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                  Saving…
+                </>
+              ) : 'Save Settings'}
             </button>
-            {saved && <span className="text-green-600 text-sm font-semibold">Saved to cloud ✓</span>}
-            {saveError && <span className="text-red-500 text-sm">{saveError}</span>}
-            {targets?.updated_at && (
+            {saved && (
+              <span className="text-green-600 text-sm font-semibold flex items-center gap-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 8l3.5 3.5L13 4.5"/></svg>
+                Saved to cloud
+              </span>
+            )}
+            {saveError && (
+              <p className="text-red-500 text-xs max-w-sm leading-relaxed">{saveError}</p>
+            )}
+            {targets?.updated_at && !saveError && (
               <span className="text-xs text-gray-400">
                 Last saved {new Date(targets.updated_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
               </span>

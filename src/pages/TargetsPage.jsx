@@ -1,10 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useData } from '../context/DataContext'
 import { formatCurrency, formatNumber } from '../utils/formatters'
-import { CURRENT_YEAR, MDRT_GOAL_DEFAULT } from '../constants'
+import { CURRENT_YEAR, MDRT_GOAL_DEFAULT, MONTH_ABBRS, MONTH_LABELS, CURRENT_MONTH_IDX, QUARTER_MONTHS } from '../constants'
 
-const MONTH_ABBRS  = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const SPREAD_MONTHS = 11  // Jan–Nov
 
 /**
@@ -43,34 +41,21 @@ function getAchCell(actual, target, isFuture) {
 }
 
 export default function TargetsPage() {
-  const { data, isLoaded, targets, loadTargets, saveTargets: saveTargetsCtx, targetsLoading } = useData()
+  const { data, isLoaded, targets, loadTargets, targetsLoading } = useData()
   const currentMonthIdx = new Date().getMonth()
 
-  const [fypTarget,   setFypTarget]   = useState('')
-  const [caseTarget,  setCaseTarget]  = useState('')
-  const [prodTarget,  setProdTarget]  = useState('')
-  const [mdrtGoal,    setMdrtGoal]    = useState('')
-  const [saved,       setSaved]       = useState(false)
-  const [saveError,   setSaveError]   = useState(null)
+  const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX)
 
   // Load from Supabase on mount and whenever targets changes
   useEffect(() => { loadTargets?.(CURRENT_YEAR) }, [])
-  useEffect(() => {
-    if (targets) {
-      setFypTarget(String(targets.fyp_annual  || ''))
-      setCaseTarget(String(targets.cases_annual  || ''))
-      setProdTarget(String(targets.producing_monthly || ''))
-      setMdrtGoal(String(targets.mdrt_goal || ''))
-    }
-  }, [targets])
 
-  const annualFyp   = Number(fypTarget)   || 0
-  const annualCases = Number(caseTarget)  || 0
-  const annualProd  = Number(prodTarget)  || 0
+  const annualFyp   = targets?.fyp_annual        || 0
+  const annualCases = targets?.cases_annual       || 0
+  const annualProd  = targets?.producing_monthly  || 0
 
   const baseMonthlyFyp   = annualFyp   > 0 ? annualFyp   / 11 : 0
   const baseMonthlyCase  = annualCases > 0 ? annualCases / 11 : 0
-  const monthlyProdTarget = annualProd  // this IS already the monthly target
+  const monthlyProdTarget = annualProd
 
   const agents = useMemo(() =>
     (data?.agents ?? []).filter(a => a.manpowerInd),
@@ -119,23 +104,6 @@ export default function TargetsPage() {
       .sort((a, b) => b.allocated - a.allocated)
   }, [agents, annualFyp, currentMonthIdx])
 
-  async function handleSave() {
-    setSaveError(null)
-    try {
-      await saveTargetsCtx?.({
-        fyp_annual:         Number(fypTarget)  || 0,
-        cases_annual:       Number(caseTarget) || 0,
-        producing_monthly:  Number(prodTarget) || 0,
-        mdrt_goal:          Number(mdrtGoal)   || MDRT_GOAL_DEFAULT,
-        agency_fyp_target:  Number(fypTarget)  || 0,
-      }, CURRENT_YEAR)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (err) {
-      setSaveError(err?.message || 'Failed to save. Check your connection.')
-    }
-  }
-
   const fypActuals  = monthlyActuals.map(m => m.fyp)
   const caseActuals = monthlyActuals.map(m => m.cases)
 
@@ -152,111 +120,209 @@ export default function TargetsPage() {
         {/* ── Header ── */}
         <div className="mb-8">
           <h1 className="text-2xl font-extrabold text-gray-800 tracking-tight">
-            Agency Targets 2026
+            Agency Goals {CURRENT_YEAR}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Set year-end goals and track monthly progress
+            Track monthly progress toward agency-wide targets
           </p>
         </div>
 
-        {/* ── Section 1: Target Settings Card ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
-          <h2 className="text-base font-bold text-gray-700 mb-1">Target Settings</h2>
-          <p className="text-xs text-gray-400 mb-5">
-            Targets are spread over 11 months (Jan–Nov). Unmet monthly balance rolls over to the next month.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-            {/* MDRT Goal */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Annual MDRT Goal (₱) — changes yearly
-              </label>
-              <input
-                type="number"
-                value={mdrtGoal}
-                onChange={e => setMdrtGoal(e.target.value)}
-                placeholder={`e.g. ${MDRT_GOAL_DEFAULT}`}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D31145]/30 focus:border-[#D31145]"
-              />
-              <p className="text-[11px] text-gray-400 mt-1">Used for advisor tier classification and awards</p>
-            </div>
-            {/* FYP Target */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Year-End FYP Target (₱)
-              </label>
-              <input
-                type="number"
-                value={fypTarget}
-                onChange={e => setFypTarget(e.target.value)}
-                placeholder="e.g. 10000000"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D31145]/30 focus:border-[#D31145]"
-              />
-              {annualFyp > 0 && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Monthly base: {formatCurrency(baseMonthlyFyp, true)}
-                </p>
-              )}
-            </div>
-
-            {/* Case Count Target */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Year-End Case Count Target
-              </label>
-              <input
-                type="number"
-                value={caseTarget}
-                onChange={e => setCaseTarget(e.target.value)}
-                placeholder="e.g. 500"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D31145]/30 focus:border-[#D31145]"
-              />
-              {annualCases > 0 && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Monthly base: {formatNumber(Math.round(baseMonthlyCase))} cases
-                </p>
-              )}
-            </div>
-
-            {/* Producing Advisors Target */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Monthly Producing Advisors Target
-              </label>
-              <input
-                type="number"
-                value={prodTarget}
-                onChange={e => setProdTarget(e.target.value)}
-                placeholder="e.g. 60"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D31145]/30 focus:border-[#D31145]"
-              />
-              {annualProd > 0 && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Monthly target: {formatNumber(annualProd)} advisors
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 flex-wrap">
-            <button
-              onClick={handleSave}
-              disabled={targetsLoading}
-              className="bg-[#D31145] text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-[#b80e3a] transition-colors duration-150 disabled:opacity-50"
-            >
-              Save Targets
-            </button>
-            {saved && <span className="text-green-600 text-sm font-semibold">Saved to cloud</span>}
-            {saveError && <span className="text-red-500 text-sm">{saveError}</span>}
-            {targets?.updated_at && (
-              <span className="text-xs text-gray-400">
-                Last saved {new Date(targets.updated_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                {targets.updated_by ? ` by ${targets.updated_by}` : ''}
-              </span>
-            )}
+        {/* ── Agency Ace Award Tracker ── */}
+        <div className="mb-8">
+          <h2 className="text-base font-bold text-gray-700 mb-1">Agency Ace Award Tracker</h2>
+          <p className="text-xs text-gray-400 mb-4">Annual thresholds: FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                label: 'FYC (YTD)',
+                target: 300000,
+                actual: MONTH_ABBRS.slice(0, currentMonthIdx + 1).reduce((s, abbr) =>
+                  s + agents.reduce((ss, a) => ss + (a.monthly?.[abbr]?.fyc || 0), 0), 0),
+                format: v => `₱${v.toLocaleString()}`,
+                targetLabel: '₱300,000',
+              },
+              {
+                label: 'Cases (YTD)',
+                target: 24,
+                actual: monthlyActuals.slice(0, currentMonthIdx + 1).reduce((s, m) => s + m.cases, 0),
+                format: v => v.toString(),
+                targetLabel: '24 cases',
+              },
+              {
+                label: 'Persistency (Latest)',
+                target: 82.5,
+                actual: (() => {
+                  for (let i = currentMonthIdx; i >= 0; i--) {
+                    const abbr = MONTH_ABBRS[i]
+                    const vals = agents.map(a => a.monthly?.[abbr]?.persistency).filter(v => v != null && !isNaN(v))
+                    if (vals.length > 0) return vals.reduce((s, v) => s + v, 0) / vals.length
+                  }
+                  return 0
+                })(),
+                format: v => `${v.toFixed(1)}%`,
+                targetLabel: '82.5%',
+              },
+            ].map(({ label, target, actual, format, targetLabel }) => {
+              const pct = target > 0 ? Math.min(100, (actual / target) * 100) : 0
+              const color = pct >= 100 ? '#4E9A51' : pct >= 80 ? '#C97B1A' : '#D31145'
+              return (
+                <div key={label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">{label}</p>
+                  <p className="text-xl font-extrabold text-gray-800 mb-0.5">{format(actual)}</p>
+                  <p className="text-[11px] text-gray-400 mb-3">Target: {targetLabel}</p>
+                  <div className="h-2 rounded-full overflow-hidden bg-gray-100">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+                  </div>
+                  <p className="text-[11px] mt-1 font-semibold" style={{ color }}>{pct.toFixed(1)}% of target</p>
+                </div>
+              )
+            })}
           </div>
         </div>
+
+        {/* ── Quarterly Bonus Summary ── */}
+        {(() => {
+          const currentQuarter = ['Q1','Q2','Q3','Q4'].find(q =>
+            QUARTER_MONTHS[q].includes(currentMonthIdx)
+          ) || 'Q1'
+          const qAbbrs = QUARTER_MONTHS[currentQuarter]
+            .filter(i => i <= currentMonthIdx)
+            .map(i => MONTH_ABBRS[i])
+
+          const totalQFyc = agents.reduce((sum, a) => {
+            return sum + qAbbrs.reduce((s2, abbr) => s2 + (a.monthly?.[abbr]?.fyc || 0), 0)
+          }, 0)
+
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8 flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-0.5">Quarterly Bonus — {currentQuarter} {CURRENT_YEAR}</p>
+                <p className="text-xl font-extrabold text-gray-800">
+                  ₱{totalQFyc.toLocaleString()} <span className="text-sm font-normal text-gray-400">quarter-to-date FYC</span>
+                </p>
+              </div>
+              <a
+                href="/quarterly-bonus"
+                className="text-sm font-semibold text-white bg-[#D31145] px-4 py-2 rounded-lg hover:bg-[#b80e3a] transition-colors"
+              >
+                View Quarterly Bonus Details →
+              </a>
+            </div>
+          )
+        })()}
+
+        {/* ── Individual Advisor Targets ── */}
+        {annualFyp > 0 && (() => {
+          const abbr          = MONTH_ABBRS[monthIdx]
+          const rollingFyp    = computeRollingTargets(annualFyp, monthlyActuals.map(m => m.fyp))
+          const monthlyTarget = rollingFyp[monthIdx]
+          const totalManpower = agents.length
+
+          const unitMap = new Map()
+          agents.forEach(a => {
+            const key = a.unitCode || '__UNASSIGNED__'
+            if (!unitMap.has(key)) unitMap.set(key, { unitName: a.unitName || key, rookies: [], seasoneds: [] })
+            const u = unitMap.get(key)
+            if (a.segment === 'Rookie') u.rookies.push(a)
+            else u.seasoneds.push(a)
+          })
+
+          const rows = []
+          unitMap.forEach(({ unitName, rookies, seasoneds }) => {
+            const allInUnit    = [...rookies, ...seasoneds]
+            const unitShare    = totalManpower > 0 ? allInUnit.length / totalManpower : 0
+            const unitTarget   = monthlyTarget * unitShare
+            const rookiePool   = unitTarget * 0.40
+            const seasonedPool = unitTarget * 0.60
+            const rookieTarget   = rookies.length   > 0 ? rookiePool   / rookies.length   : 0
+            const seasonedTarget = seasoneds.length > 0 ? seasonedPool / seasoneds.length : 0
+
+            const unitActual = allInUnit.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp || 0), 0)
+            rows.push({ type: 'unit', unitName, target: unitTarget, actual: unitActual })
+
+            ;[...rookies, ...seasoneds].forEach(a => {
+              const target = a.segment === 'Rookie' ? rookieTarget : seasonedTarget
+              const actual = a.monthly?.[abbr]?.fyp || 0
+              rows.push({ type: 'advisor', agent: a, target, actual, unitName })
+            })
+          })
+
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h2 className="text-base font-bold text-gray-700">Individual Advisor Targets</h2>
+                <div className="flex gap-1 flex-wrap">
+                  {MONTH_LABELS.map((lbl, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setMonthIdx(i)}
+                      className="px-2.5 py-1 rounded text-[11px] transition-colors"
+                      style={{
+                        backgroundColor: monthIdx === i ? '#D31145' : 'transparent',
+                        color: monthIdx === i ? '#fff' : '#6B7180',
+                        border: `1px solid ${monthIdx === i ? '#D31145' : '#E8E9ED'}`,
+                        fontFamily: 'AIA Everest',
+                        fontWeight: monthIdx === i ? 700 : 500,
+                      }}
+                    >
+                      {lbl.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">
+                Monthly target: {formatCurrency(monthlyTarget, true)} · Rookies 40% pool, Seasoneds 60% pool, split by headcount
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      {['Advisor','Unit','Segment','Personal Target','Actual FYP','Achievement %'].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, i) => {
+                      const ach = row.target > 0 ? (row.actual / row.target) * 100 : null
+                      const achCls = ach === null ? 'text-gray-300' : ach >= 100 ? 'text-green-600 font-bold' : ach >= 80 ? 'text-amber-600 font-bold' : 'text-red-500'
+                      if (row.type === 'unit') {
+                        return (
+                          <tr key={`u-${i}`} className="bg-gray-100 border-t border-gray-200">
+                            <td colSpan={2} className="py-2 px-3 font-bold text-gray-700 text-[11px] uppercase tracking-wide">{row.unitName}</td>
+                            <td className="py-2 px-3 text-[11px] text-gray-400">Unit Total</td>
+                            <td className="py-2 px-3 text-right font-bold text-gray-700">{formatCurrency(row.target, true)}</td>
+                            <td className="py-2 px-3 text-right font-bold text-gray-700">{formatCurrency(row.actual, true)}</td>
+                            <td className="py-2 px-3 text-right">
+                              {ach !== null ? <span className={achCls}>{ach.toFixed(1)}%</span> : '—'}
+                            </td>
+                          </tr>
+                        )
+                      }
+                      return (
+                        <tr key={row.agent.code} className="border-b border-gray-50 even:bg-gray-50 hover:bg-gray-50/50">
+                          <td className="py-2 px-3 text-gray-700">{row.agent.name}</td>
+                          <td className="py-2 px-3 text-gray-500 text-[11px]">{row.unitName}</td>
+                          <td className="py-2 px-3">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: row.agent.segment === 'Rookie' ? '#FAE8EE' : '#FFF0EB', color: row.agent.segment === 'Rookie' ? '#D31145' : '#FF754D' }}>
+                              {row.agent.segment}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-700 font-medium">{formatCurrency(row.target, true)}</td>
+                          <td className="py-2 px-3 text-right text-gray-700 font-medium">{formatCurrency(row.actual, true)}</td>
+                          <td className="py-2 px-3 text-right">
+                            {ach !== null ? <span className={achCls}>{ach.toFixed(1)}%</span> : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── Section 2: Monthly Progress Tables ── */}
 

@@ -247,7 +247,8 @@ function parseAgentRow(row) {
       const by  = Math.floor(bNum / 10000)
       const bmo = Math.floor((bNum % 10000) / 100) - 1
       const bd  = bNum % 100
-      birthDate = new Date(by, bmo, bd).toISOString().split('T')[0]
+      // Build ISO string directly — avoids local-midnight UTC rollback in UTC+8
+      birthDate = `${by}-${String(bmo + 1).padStart(2, '0')}-${String(bd).padStart(2, '0')}`
     } else if (bNum >= 20000 && bNum <= 60000) {
       // Excel serial date: days since 1900-01-00 (Lotus 1-2-3 bug: serial 1 = Jan 1 1900)
       birthDate = new Date(Date.UTC(1900, 0, bNum - 1)).toISOString().split('T')[0]

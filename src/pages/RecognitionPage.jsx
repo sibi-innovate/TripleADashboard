@@ -155,11 +155,9 @@ function NewAdvisorsTab({ monthIdx }) {
   const { data } = useData();
   const agents = data?.agents || [];
 
-  const newAdvisors = agents.filter(a => {
-    if (!a.appointmentDate) return false;
-    const d = new Date(a.appointmentDate);
-    return !isNaN(d) && d.getMonth() === monthIdx;
-  });
+  // Only advisors whose NEW_RECRUIT_{MONTH}{YEAR} column = 1 for this month
+  const abbr = MONTH_ABBRS[monthIdx];
+  const newAdvisors = agents.filter(a => a.monthly?.[abbr]?.isNewRecruit === true);
 
   if (newAdvisors.length === 0) {
     return <EmptyState title="No new advisors this month" message="No advisors were appointed in the selected month." />;

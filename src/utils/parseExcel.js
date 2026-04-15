@@ -113,11 +113,20 @@ function parseAgentRow(row) {
 
   // --- Segmentation from APPTDATE (fallback if AGTYR missing)
   const rawAppt  = get('PADATE') ?? get('PA DATE') ?? get('PA_DATE') ?? get('APPTDATE') ?? get('APPT DATE')
-  const apptDate = rawAppt != null ? num(rawAppt) : 0
+  let apptDate   = rawAppt != null ? num(rawAppt) : 0
   let agentYears = null
   let segment    = 'Unknown'
 
   const SENTINEL = 19000101
+  // Handle Excel serial date format for apptDate
+  if (apptDate >= 20000 && apptDate <= 60000) {
+    // Convert serial to YYYYMMDD integer for downstream compatibility
+    const serialDate = new Date(Date.UTC(1900, 0, apptDate - 1))
+    apptDate = serialDate.getUTCFullYear() * 10000
+      + (serialDate.getUTCMonth() + 1) * 100
+      + serialDate.getUTCDate()
+  }
+
   if (apptDate && apptDate > SENTINEL) {
     const y  = Math.floor(apptDate / 10000)
     const mo = Math.floor((apptDate % 10000) / 100) - 1
@@ -234,10 +243,14 @@ function parseAgentRow(row) {
   if (rawBirth != null) {
     const bNum = num(rawBirth)
     if (bNum && bNum > 19000101) {
+      // YYYYMMDD integer format (e.g. 19870315)
       const by  = Math.floor(bNum / 10000)
       const bmo = Math.floor((bNum % 10000) / 100) - 1
       const bd  = bNum % 100
       birthDate = new Date(by, bmo, bd).toISOString().split('T')[0]
+    } else if (bNum >= 20000 && bNum <= 60000) {
+      // Excel serial date: days since 1900-01-00 (Lotus 1-2-3 bug: serial 1 = Jan 1 1900)
+      birthDate = new Date(Date.UTC(1900, 0, bNum - 1)).toISOString().split('T')[0]
     } else if (typeof rawBirth === 'string' && rawBirth.trim()) {
       const parsed = new Date(rawBirth.trim())
       if (!isNaN(parsed)) birthDate = parsed.toISOString().split('T')[0]

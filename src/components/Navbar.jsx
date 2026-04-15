@@ -80,7 +80,8 @@ function isTabActive(tab, pathname) {
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { agents } = useData();
+  const { data } = useData();
+  const agents = data?.agents;
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Badge count: birthdays + new advisors this month

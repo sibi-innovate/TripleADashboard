@@ -54,20 +54,23 @@ export function DataProvider({ children }) {
   // --------------------------------------------------------------------------
   async function loadTargets(year = CURRENT_YEAR) {
     setTargetsLoading(true)
-    // REQUIRED: agency_targets table must have a UNIQUE constraint on (year).
-    // If missing, run in Supabase SQL editor:
-    //   ALTER TABLE agency_targets ADD CONSTRAINT agency_targets_year_key UNIQUE (year);
-    // Without this, upsert inserts duplicates. The .order+.limit below is a safe fallback.
-    const { data, error } = await supabase
-      .from('agency_targets')
-      .select('*')
-      .eq('year', year)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-    if (error) console.warn('DataContext: loadTargets error:', error.message)
-    if (data && data.length > 0) setTargets(data[0])
-    setTargetsLoading(false)
-    return data?.[0] ?? null
+    try {
+      // REQUIRED: agency_targets table must have a UNIQUE constraint on (year).
+      // If missing, run in Supabase SQL editor:
+      //   ALTER TABLE agency_targets ADD CONSTRAINT agency_targets_year_key UNIQUE (year);
+      // Without this, upsert inserts duplicates. The .order+.limit below is a safe fallback.
+      const { data, error } = await supabase
+        .from('agency_targets')
+        .select('*')
+        .eq('year', year)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      if (error) console.warn('DataContext: loadTargets error:', error.message)
+      if (data && data.length > 0) setTargets(data[0])
+      return data?.[0] ?? null
+    } finally {
+      setTargetsLoading(false)
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -83,7 +86,7 @@ export function DataProvider({ children }) {
       .select()
     if (error) {
       console.error('DataContext: saveTargets error:', error.message)
-      return { data: null, error }
+      throw error
     }
     const saved = data?.[0] ?? null
     if (saved) setTargets(saved)

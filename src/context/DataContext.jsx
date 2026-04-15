@@ -54,15 +54,20 @@ export function DataProvider({ children }) {
   // --------------------------------------------------------------------------
   async function loadTargets(year = CURRENT_YEAR) {
     setTargetsLoading(true)
+    // REQUIRED: agency_targets table must have a UNIQUE constraint on (year).
+    // If missing, run in Supabase SQL editor:
+    //   ALTER TABLE agency_targets ADD CONSTRAINT agency_targets_year_key UNIQUE (year);
+    // Without this, upsert inserts duplicates. The .order+.limit below is a safe fallback.
     const { data, error } = await supabase
       .from('agency_targets')
       .select('*')
       .eq('year', year)
-      .single()
-    if (data) setTargets(data)
-    // If no row exists yet, targets stays null (page will show defaults)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+    if (error) console.warn('DataContext: loadTargets error:', error.message)
+    if (data && data.length > 0) setTargets(data[0])
     setTargetsLoading(false)
-    return data
+    return data?.[0] ?? null
   }
 
   // --------------------------------------------------------------------------
@@ -71,11 +76,18 @@ export function DataProvider({ children }) {
   async function saveTargets(targetsData, year = CURRENT_YEAR) {
     const { data, error } = await supabase
       .from('agency_targets')
-      .upsert({ year, ...targetsData, updated_at: new Date().toISOString() }, { onConflict: 'year' })
+      .upsert(
+        { year, ...targetsData, updated_at: new Date().toISOString() },
+        { onConflict: 'year' }
+      )
       .select()
-      .single()
-    if (data) setTargets(data)
-    return { data, error }
+    if (error) {
+      console.error('DataContext: saveTargets error:', error.message)
+      return { data: null, error }
+    }
+    const saved = data?.[0] ?? null
+    if (saved) setTargets(saved)
+    return { data: saved, error: null }
   }
 
   // --------------------------------------------------------------------------

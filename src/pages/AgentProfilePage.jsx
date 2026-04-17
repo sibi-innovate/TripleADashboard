@@ -7,18 +7,29 @@ import ProgressBar from '../components/ProgressBar'
 import MonthlyBarChart from '../components/MonthlyBarChart'
 import SectionHeader from '../components/SectionHeader'
 import {
-  MONTH_ABBRS, MONTH_SHORT, ADVISOR_TIERS, TIER_COLORS, MDRT_GOAL_DEFAULT, CURRENT_MONTH_IDX,
+  MONTH_ABBRS, MONTH_SHORT, ADVISOR_TIERS, TIER_COLORS, MDRT_GOAL_DEFAULT, CURRENT_MONTH_IDX, MONTH_LABELS, CURRENT_YEAR,
 } from '../constants'
 import {
   getAgentYtdFyp, getAgentYtdFyc, getAgentYtdAnp, getAgentYtdCases,
   calculateQuarterlyBonus, getAdvisorTier, getFycNextTierGap, formatPeso, formatPct,
 } from '../utils/calculations'
 
+function computeRollingTargets(annualTarget, actuals) {
+  const tgts = new Array(12).fill(0)
+  let cum = 0
+  for (let i = 0; i < 11; i++) {
+    tgts[i] = Math.max(0, (annualTarget - cum) / (11 - i))
+    cum += actuals[i] || 0
+  }
+  return tgts
+}
+
 const PROFILE_TABS = [
-  { key: 'performance',  label: 'Performance' },
-  { key: 'bonus',        label: 'Bonus' },
+  { key: 'performance',    label: 'Performance' },
+  { key: 'bonus',          label: 'Bonus' },
   { key: 'qualifications', label: 'Qualifications' },
-  { key: 'team',         label: 'Team Impact' },
+  { key: 'team',           label: 'Team Impact' },
+  { key: 'goals',          label: 'Goals' },
 ]
 
 const QUARTER_KEYS = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -434,6 +445,135 @@ function TeamImpactTab({ agent, agents }) {
   )
 }
 
+// ─── Goals Tab ───────────────────────────────────────────────────────────────
+
+function GoalsTab({ agent, allAgents, targets }) {
+  const annualFyp = targets?.fyp_annual || 0
+
+  // ── Ace Award ──
+  const ACE_FYC = 300000, ACE_CASES = 24, ACE_PERS = 82.5
+  const ytdFyc   = getAgentYtdFyc(agent, CURRENT_MONTH_IDX)
+  const ytdCases = getAgentYtdCases(agent, CURRENT_MONTH_IDX)
+  const persVals = MONTH_ABBRS.slice(0, CURRENT_MONTH_IDX + 1)
+    .map(abbr => agent.monthly?.[abbr]?.persistency)
+    .filter(v => v != null && !isNaN(v))
+  const avgPers = persVals.length > 0 ? persVals.reduce((s, v) => s + v, 0) / persVals.length : null
+  const aceQualified = ytdFyc >= ACE_FYC && ytdCases >= ACE_CASES && (avgPers == null || avgPers >= ACE_PERS)
+
+  // ── Personal Monthly FYP Target ──
+  const activeAgents = allAgents.filter(a => a.manpowerInd)
+  const totalManpower = activeAgents.length
+  const fypActuals = MONTH_ABBRS.map(abbr =>
+    activeAgents.reduce((s, a) => s + (a.monthly?.[abbr]?.fyp || 0), 0)
+  )
+  const rollingFypTargets = computeRollingTargets(annualFyp, fypActuals)
+  const monthlyTarget = rollingFypTargets[CURRENT_MONTH_IDX]
+
+  // Unit + segment allocation
+  const agentUnitKey = agent.unitCode || agent.unitName || ''
+  const unitAgents   = activeAgents.filter(a => (a.unitCode || a.unitName || '') === agentUnitKey)
+  const unitShare    = totalManpower > 0 ? unitAgents.length / totalManpower : 0
+  const unitTarget   = monthlyTarget * unitShare
+  const isRookie     = agent.segment === 'Rookie'
+  const poolCount    = isRookie
+    ? unitAgents.filter(a => a.segment === 'Rookie').length
+    : unitAgents.filter(a => a.segment !== 'Rookie').length
+  const personalTarget = poolCount > 0
+    ? (unitTarget * (isRookie ? 0.40 : 0.60)) / poolCount
+    : 0
+
+  const abbr     = MONTH_ABBRS[CURRENT_MONTH_IDX]
+  const actualFyp = agent.monthly?.[abbr]?.fyp || 0
+  const targetAch = personalTarget > 0 ? (actualFyp / personalTarget) * 100 : null
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Ace Award Progress ── */}
+      <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <SectionHeader title="Ace Award Progress" />
+          {aceQualified && (
+            <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+              style={{ fontFamily: 'AIA Everest', backgroundColor: '#EAF4EB', color: '#4E9A51', border: '1px solid #4E9A51' }}>
+              ✓ On Track
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] mb-4" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+          Individual award · FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%
+        </p>
+        {[
+          { label: 'FYC (YTD)',        actual: ytdFyc,   target: ACE_FYC,   format: v => formatPeso(v),                        targetLabel: '₱300,000',  met: ytdFyc >= ACE_FYC,    na: false },
+          { label: 'Cases (YTD)',      actual: ytdCases, target: ACE_CASES, format: v => String(v),                            targetLabel: '24 cases',  met: ytdCases >= ACE_CASES, na: false },
+          { label: 'Persistency (Avg)',actual: avgPers,  target: ACE_PERS,  format: v => v != null ? `${v.toFixed(1)}%` : 'N/A', targetLabel: '82.5%', met: avgPers != null && avgPers >= ACE_PERS, na: avgPers == null },
+        ].map(({ label, actual, target, format, targetLabel, met, na }) => {
+          const pct   = na ? 0 : Math.min(100, (actual / target) * 100)
+          const color = met ? '#4E9A51' : pct >= 80 ? '#C97B1A' : '#D31145'
+          return (
+            <div key={label} className="mb-3 last:mb-0">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[10px] font-semibold" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{label}</span>
+                <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color }}>{format(actual)}</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+              </div>
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[9px]" style={{ fontFamily: 'AIA Everest', color }}>{na ? 'N/A' : `${pct.toFixed(0)}%`}</span>
+                <span className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Target: {targetLabel}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Personal Monthly FYP Target ── */}
+      {annualFyp > 0 ? (
+        <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          <SectionHeader title="Personal Monthly FYP Target" />
+          <p className="text-[10px] mt-1 mb-3" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+            {MONTH_LABELS[CURRENT_MONTH_IDX]} {CURRENT_YEAR} · {isRookie ? 'Rookie' : 'Seasoned'} pool · allocated from agency target
+          </p>
+          <div className="flex items-end justify-between mb-3">
+            <div>
+              <p className="text-2xl font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{formatPeso(actualFyp)}</p>
+              <p className="text-[10px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Actual FYP</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--char-60,#6B7180)' }}>{formatPeso(personalTarget)}</p>
+              <p className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Target</p>
+            </div>
+          </div>
+          {personalTarget > 0 && targetAch !== null && (
+            <>
+              <div className="h-2.5 rounded-full overflow-hidden mb-1" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, targetAch)}%`,
+                    backgroundColor: targetAch >= 100 ? '#4E9A51' : targetAch >= 80 ? '#C97B1A' : '#D31145',
+                  }}
+                />
+              </div>
+              <p className="text-[11px] font-semibold" style={{
+                fontFamily: 'AIA Everest',
+                color: targetAch >= 100 ? '#4E9A51' : targetAch >= 80 ? '#C97B1A' : '#D31145',
+              }}>{targetAch.toFixed(1)}% of target</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl p-4 text-center" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          <p className="text-xs font-semibold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>No agency target set</p>
+          <p className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Set an annual FYP target in Settings to see personal targets.</p>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function AgentProfilePage() {
@@ -576,6 +716,7 @@ export default function AgentProfilePage() {
         {activeTab === 'bonus'          && <BonusTab agent={agent} />}
         {activeTab === 'qualifications' && <QualificationsTab agent={agent} targets={targets} />}
         {activeTab === 'team'           && <TeamImpactTab agent={agent} agents={agents} />}
+        {activeTab === 'goals'          && <GoalsTab agent={agent} allAgents={agents} targets={targets} />}
       </div>
     </div>
   )

@@ -127,58 +127,83 @@ export default function TargetsPage() {
           </p>
         </div>
 
-        {/* ── Agency Ace Award Tracker ── */}
-        <div className="mb-8">
-          <h2 className="text-base font-bold text-gray-700 mb-1">Agency Ace Award Tracker</h2>
-          <p className="text-xs text-gray-400 mb-4">Annual thresholds: FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              {
-                label: 'FYC (YTD)',
-                target: 300000,
-                actual: MONTH_ABBRS.slice(0, currentMonthIdx + 1).reduce((s, abbr) =>
-                  s + agents.reduce((ss, a) => ss + (a.monthly?.[abbr]?.fyc || 0), 0), 0),
-                format: v => `₱${v.toLocaleString()}`,
-                targetLabel: '₱300,000',
-              },
-              {
-                label: 'Cases (YTD)',
-                target: 24,
-                actual: monthlyActuals.slice(0, currentMonthIdx + 1).reduce((s, m) => s + m.cases, 0),
-                format: v => v.toString(),
-                targetLabel: '24 cases',
-              },
-              {
-                label: 'Persistency (Latest)',
-                target: 82.5,
-                actual: (() => {
-                  for (let i = currentMonthIdx; i >= 0; i--) {
-                    const abbr = MONTH_ABBRS[i]
-                    const vals = agents.map(a => a.monthly?.[abbr]?.persistency).filter(v => v != null && !isNaN(v))
-                    if (vals.length > 0) return vals.reduce((s, v) => s + v, 0) / vals.length
-                  }
-                  return 0
-                })(),
-                format: v => `${v.toFixed(1)}%`,
-                targetLabel: '82.5%',
-              },
-            ].map(({ label, target, actual, format, targetLabel }) => {
-              const pct = target > 0 ? Math.min(100, (actual / target) * 100) : 0
-              const color = pct >= 100 ? '#4E9A51' : pct >= 80 ? '#C97B1A' : '#D31145'
-              return (
-                <div key={label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                  <p className="text-xs font-semibold text-gray-500 mb-1">{label}</p>
-                  <p className="text-xl font-extrabold text-gray-800 mb-0.5">{format(actual)}</p>
-                  <p className="text-[11px] text-gray-400 mb-3">Target: {targetLabel}</p>
-                  <div className="h-2 rounded-full overflow-hidden bg-gray-100">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
-                  </div>
-                  <p className="text-[11px] mt-1 font-semibold" style={{ color }}>{pct.toFixed(1)}% of target</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        {/* ── Ace Award Tracker — Individual Progress ── */}
+        {(() => {
+          const ACE_FYC = 300000, ACE_CASES = 24, ACE_PERS = 82.5
+          const advisorAce = agents.map(a => {
+            const ytdFyc   = MONTH_ABBRS.slice(0, currentMonthIdx + 1).reduce((s, abbr) => s + (a.monthly?.[abbr]?.fyc   || 0), 0)
+            const ytdCases = MONTH_ABBRS.slice(0, currentMonthIdx + 1).reduce((s, abbr) => s + (a.monthly?.[abbr]?.cases || 0), 0)
+            const persVals = MONTH_ABBRS.slice(0, currentMonthIdx + 1)
+              .map(abbr => a.monthly?.[abbr]?.persistency)
+              .filter(v => v != null && !isNaN(v))
+            const avgPers  = persVals.length > 0 ? persVals.reduce((s, v) => s + v, 0) / persVals.length : null
+            const fycMet   = ytdFyc   >= ACE_FYC
+            const casesMet = ytdCases >= ACE_CASES
+            const persMet  = avgPers == null || avgPers >= ACE_PERS
+            const qualified = fycMet && casesMet && persMet
+            return { agent: a, ytdFyc, ytdCases, avgPers, fycMet, casesMet, persMet, qualified }
+          }).sort((a, b) => {
+            if (a.qualified !== b.qualified) return a.qualified ? -1 : 1
+            return b.ytdFyc - a.ytdFyc
+          })
+          const qualCount = advisorAce.filter(x => x.qualified).length
+
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h2 className="text-base font-bold text-gray-700">Ace Award Tracker</h2>
+                <span className="text-xs text-gray-500">
+                  <span className="font-bold text-green-600">{qualCount}</span> of {agents.length} advisors on track
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">
+                Individual award · Annual thresholds: FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      {['Advisor', 'Unit', 'FYC YTD', 'Cases YTD', 'Persistency', 'Status'].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {advisorAce.map(({ agent: a, ytdFyc, ytdCases, avgPers, fycMet, casesMet, persMet, qualified }) => (
+                      <tr key={a.code} className="border-b border-gray-50 even:bg-gray-50 hover:bg-gray-50/50">
+                        <td className="py-2 px-3 text-gray-700 font-medium">{a.name}</td>
+                        <td className="py-2 px-3 text-gray-500 text-[11px]">{a.unitName || '—'}</td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-10 h-1.5 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(100, ytdFyc / ACE_FYC * 100)}%`, backgroundColor: fycMet ? '#4E9A51' : '#D31145' }} />
+                            </div>
+                            <span className="text-[11px] font-medium" style={{ color: fycMet ? '#4E9A51' : '#1C1C28' }}>
+                              {formatCurrency(ytdFyc, true)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span className="text-[11px] font-medium" style={{ color: casesMet ? '#4E9A51' : '#1C1C28' }}>{ytdCases}</span>
+                        </td>
+                        <td className="py-2 px-3">
+                          {avgPers != null
+                            ? <span className="text-[11px] font-medium" style={{ color: persMet ? '#4E9A51' : '#1C1C28' }}>{avgPers.toFixed(1)}%</span>
+                            : <span className="text-gray-300 text-[11px]">—</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {qualified
+                            ? <span className="text-[10px] font-bold rounded px-1.5 py-0.5" style={{ backgroundColor: '#EAF4EB', color: '#4E9A51' }}>✓ On Track</span>
+                            : <span className="text-[10px] rounded px-1.5 py-0.5" style={{ backgroundColor: '#F2F3F5', color: '#6B7180' }}>In Progress</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── Quarterly Bonus Summary ── */}
         {(() => {

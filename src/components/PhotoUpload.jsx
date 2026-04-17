@@ -21,73 +21,132 @@ import { supabase } from '../lib/supabase'
 // the visible crop and returns it as a Blob.
 
 const CROP_SIZE = 300 // px, display size of the crop square
+const MIN_SCALE = 1
+const MAX_SCALE = 4
 
 function CropModal({ file, agentName, onDone, onCancel }) {
-  const [imgUrl]          = useState(() => URL.createObjectURL(file))
-  const [displaySize, setDisplaySize] = useState(null) // { w, h } of img in px
-  const [offset, setOffset]           = useState({ x: 0, y: 0 })
-  const [uploading, setUploading]     = useState(false)
+  // ── State ──
+  const [imgUrl,      setImgUrl]      = useState(null)       // created after mount (StrictMode-safe)
+  const [displaySize, setDisplaySize] = useState(null)       // { w, h } cover-fit px
+  const [offset,      setOffset]      = useState({ x: 0, y: 0 })
+  const [scale,       setScale]       = useState(1)
+  const [uploading,   setUploading]   = useState(false)
+
+  // ── Refs ──
   const imgRef      = useRef(null)
   const dragging    = useRef(false)
   const dragOrigin  = useRef({ x: 0, y: 0 })
+  const pinchDist   = useRef(null)
+  const scaleRef    = useRef(1)          // mirrors `scale` state — always current for event handlers
 
-  // Revoke object URL when modal unmounts
-  useEffect(() => () => URL.revokeObjectURL(imgUrl), [imgUrl])
+  // Create object URL inside effect so React 18 StrictMode double-mount doesn't revoke it mid-use
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setImgUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
-  function onImgLoad() {
-    const img = imgRef.current
-    if (!img) return
-    const { naturalWidth: nw, naturalHeight: nh } = img
-    // Scale to cover the crop square
-    let w, h
-    if (nw / nh > 1) { h = CROP_SIZE; w = CROP_SIZE * (nw / nh) }
-    else              { w = CROP_SIZE; h = CROP_SIZE * (nh / nw) }
-    setDisplaySize({ w, h })
-  }
-
-  const clamp = useCallback((ox, oy, dw, dh) => {
-    const maxX = Math.max(0, (dw - CROP_SIZE) / 2)
-    const maxY = Math.max(0, (dh - CROP_SIZE) / 2)
+  // ── Clamp offset so image always covers the crop frame ──
+  const clamp = useCallback((ox, oy, dw, dh, sc) => {
+    const maxX = Math.max(0, (dw * sc - CROP_SIZE) / 2)
+    const maxY = Math.max(0, (dh * sc - CROP_SIZE) / 2)
     return {
       x: Math.max(-maxX, Math.min(maxX, ox)),
       y: Math.max(-maxY, Math.min(maxY, oy)),
     }
   }, [])
 
-  function startDrag(clientX, clientY) {
-    dragging.current = true
-    dragOrigin.current = { x: clientX - offset.x, y: clientY - offset.y }
+  // ── Image load: measure natural size → compute cover-fit displaySize ──
+  function onImgLoad() {
+    const img = imgRef.current
+    if (!img) return
+    const { naturalWidth: nw, naturalHeight: nh } = img
+    let w, h
+    if (nw / nh > 1) { h = CROP_SIZE; w = CROP_SIZE * (nw / nh) }
+    else              { w = CROP_SIZE; h = CROP_SIZE * (nh / nw) }
+    setDisplaySize({ w, h })
   }
-  function moveDrag(clientX, clientY) {
+
+  // ── Zoom helper (uses scaleRef to avoid stale closure) ──
+  function applyZoom(newScale) {
+    if (!displaySize) return
+    const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale))
+    scaleRef.current = clamped
+    setScale(clamped)
+    setOffset(o => clamp(o.x, o.y, displaySize.w, displaySize.h, clamped))
+  }
+
+  // ── Pan ──
+  function startDrag(cx, cy) {
+    dragging.current = true
+    dragOrigin.current = { x: cx - offset.x, y: cy - offset.y }
+  }
+  function moveDrag(cx, cy) {
     if (!dragging.current || !displaySize) return
-    const raw = { x: clientX - dragOrigin.current.x, y: clientY - dragOrigin.current.y }
-    setOffset(clamp(raw.x, raw.y, displaySize.w, displaySize.h))
+    const raw = { x: cx - dragOrigin.current.x, y: cy - dragOrigin.current.y }
+    setOffset(clamp(raw.x, raw.y, displaySize.w, displaySize.h, scaleRef.current))
   }
   function endDrag() { dragging.current = false }
 
-  // Mouse events
+  // ── Mouse events ──
   const onMouseDown = e => { e.preventDefault(); startDrag(e.clientX, e.clientY) }
   const onMouseMove = e => moveDrag(e.clientX, e.clientY)
   const onMouseUp   = endDrag
 
-  // Touch events
-  const onTouchStart = e => { const t = e.touches[0]; startDrag(t.clientX, t.clientY) }
-  const onTouchMove  = e => { e.preventDefault(); const t = e.touches[0]; moveDrag(t.clientX, t.clientY) }
-  const onTouchEnd   = endDrag
+  // ── Scroll-wheel zoom ──
+  function onWheel(e) {
+    e.preventDefault()
+    const delta = e.deltaY < 0 ? 0.1 : -0.1
+    applyZoom(scaleRef.current + delta)
+  }
 
+  // ── Touch events: single-finger pan + two-finger pinch zoom ──
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      pinchDist.current = Math.hypot(dx, dy)
+    } else {
+      startDrag(e.touches[0].clientX, e.touches[0].clientY)
+    }
+  }
+  function onTouchMove(e) {
+    e.preventDefault()
+    if (e.touches.length === 2 && displaySize) {
+      const dx   = e.touches[0].clientX - e.touches[1].clientX
+      const dy   = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.hypot(dx, dy)
+      if (pinchDist.current) applyZoom(scaleRef.current * (dist / pinchDist.current))
+      pinchDist.current = dist
+    } else if (e.touches.length === 1) {
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY)
+    }
+  }
+  function onTouchEnd(e) {
+    if (e.touches.length < 2) pinchDist.current = null
+    if (e.touches.length === 0) endDrag()
+  }
+
+  // ── Canvas crop + upload ──
   async function handleConfirm() {
     const img = imgRef.current
     if (!img || !displaySize) return
     setUploading(true)
 
-    // Scale display → natural
+    // Scale from display-px → natural-px
     const scaleX = img.naturalWidth  / displaySize.w
     const scaleY = img.naturalHeight / displaySize.h
 
-    // The image center in the container is at (CROP_SIZE/2 + offset.x, CROP_SIZE/2 + offset.y)
-    // So the crop starts at image-local display coords:
-    const cropXDisplay = displaySize.w / 2 - CROP_SIZE / 2 - offset.x
-    const cropYDisplay = displaySize.h / 2 - CROP_SIZE / 2 - offset.y
+    // Map crop frame (center of container) back through pan + zoom into image display coords
+    // Image center in container = (CROP_SIZE/2 + offset.x, CROP_SIZE/2 + offset.y)
+    // Container origin (0,0) maps to image display coord:
+    //   x = (0 - (CROP_SIZE/2 + offset.x)) / scale + displaySize.w/2
+    //     = displaySize.w/2 - (CROP_SIZE/2 + offset.x) / scale
+    const sc           = scaleRef.current
+    const cropXDisplay = displaySize.w / 2 - (CROP_SIZE / 2 + offset.x) / sc
+    const cropYDisplay = displaySize.h / 2 - (CROP_SIZE / 2 + offset.y) / sc
+    const cropWDisplay = CROP_SIZE / sc
+    const cropHDisplay = CROP_SIZE / sc
 
     const canvas = document.createElement('canvas')
     canvas.width  = 400
@@ -95,10 +154,8 @@ function CropModal({ file, agentName, onDone, onCancel }) {
     const ctx = canvas.getContext('2d')
     ctx.drawImage(
       img,
-      cropXDisplay * scaleX,
-      cropYDisplay * scaleY,
-      CROP_SIZE    * scaleX,
-      CROP_SIZE    * scaleY,
+      cropXDisplay * scaleX,  cropYDisplay * scaleY,
+      cropWDisplay * scaleX,  cropHDisplay * scaleY,
       0, 0, 400, 400,
     )
 
@@ -108,74 +165,88 @@ function CropModal({ file, agentName, onDone, onCancel }) {
     }, 'image/jpeg', 0.92)
   }
 
+  // Wait until object URL is ready before rendering modal
+  if (!imgUrl) return null
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+
         {/* Header */}
         <div className="px-6 pt-5 pb-3">
           <p className="text-sm font-bold text-gray-800" style={{ fontFamily: 'AIA Everest' }}>
             Crop Photo
           </p>
           <p className="text-xs text-gray-400 mt-0.5" style={{ fontFamily: 'AIA Everest' }}>
-            Drag to reposition · square crop
+            Drag to reposition · scroll or pinch to zoom
           </p>
         </div>
 
         {/* Crop frame */}
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-2">
           <div
             className="relative overflow-hidden rounded-xl mx-auto select-none"
             style={{
-              width:  CROP_SIZE,
-              height: CROP_SIZE,
-              cursor: dragging.current ? 'grabbing' : 'grab',
-              background: '#1C1C28',
+              width:       CROP_SIZE,
+              height:      CROP_SIZE,
+              cursor:      'grab',
+              background:  '#1C1C28',
+              touchAction: 'none',
             }}
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
+            onWheel={onWheel}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
           >
-            {displaySize ? (
-              <img
-                ref={imgRef}
-                src={imgUrl}
-                alt="Crop"
-                onLoad={onImgLoad}
-                draggable={false}
-                style={{
-                  position:        'absolute',
-                  width:           displaySize.w,
-                  height:          displaySize.h,
-                  top:             '50%',
-                  left:            '50%',
-                  transform:       `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
-                  userSelect:      'none',
-                  pointerEvents:   'none',
-                }}
-              />
-            ) : (
-              /* Hidden img used only for onLoad measurement */
-              <img
-                ref={imgRef}
-                src={imgUrl}
-                alt=""
-                onLoad={onImgLoad}
-                draggable={false}
-                style={{ opacity: 0, position: 'absolute' }}
-              />
-            )}
+            {/* Single img — hidden (opacity:0) until displaySize is known */}
+            <img
+              ref={imgRef}
+              src={imgUrl}
+              alt="Crop"
+              onLoad={onImgLoad}
+              draggable={false}
+              style={{
+                position:        'absolute',
+                width:           displaySize ? displaySize.w : 'auto',
+                height:          displaySize ? displaySize.h : 'auto',
+                maxWidth:        'none',
+                opacity:         displaySize ? 1 : 0,
+                top:             '50%',
+                left:            '50%',
+                transform:       `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
+                transformOrigin: 'center center',
+                userSelect:      'none',
+                pointerEvents:   'none',
+              }}
+            />
           </div>
-          <p className="text-center text-[10px] text-gray-400 mt-2" style={{ fontFamily: 'AIA Everest' }}>
+
+          {/* Zoom controls */}
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <button
+              onClick={() => applyZoom(scaleRef.current - 0.25)}
+              className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-bold text-base leading-none"
+            >−</button>
+            <span className="text-[11px] text-gray-400 w-10 text-center" style={{ fontFamily: 'DM Mono, monospace' }}>
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => applyZoom(scaleRef.current + 0.25)}
+              className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-bold text-base leading-none"
+            >+</button>
+          </div>
+
+          <p className="text-center text-[10px] text-gray-400 mt-1.5" style={{ fontFamily: 'AIA Everest' }}>
             Photo for {agentName}
           </p>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3 px-6 pb-5">
+        <div className="flex gap-3 px-6 pb-5 pt-2">
           <button
             onClick={onCancel}
             disabled={uploading}
@@ -193,6 +264,7 @@ function CropModal({ file, agentName, onDone, onCancel }) {
             {uploading ? 'Saving…' : 'Use This Crop'}
           </button>
         </div>
+
       </div>
     </div>
   )

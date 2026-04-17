@@ -81,10 +81,10 @@ export function getTopOverall(agents, monthAbbr, n = 5) {
   return computeRankScore(agents, monthAbbr).slice(0, n)
 }
 
-// ─── Most Trusted Advisors (MTA): monthly cases > 2, sorted by cases desc, tie-break FYP
+// ─── Most Trusted Advisors (MTA): monthly cases >= 2, sorted by cases desc, tie-break FYP
 export function getMostTrustedAdvisors(agents, monthAbbr) {
   return agents
-    .filter(a => a.manpowerInd && (a.monthly?.[monthAbbr]?.cases || 0) > 2)
+    .filter(a => a.manpowerInd && (a.monthly?.[monthAbbr]?.cases || 0) >= 2)
     .map(a => ({
       agent: a,
       cases: a.monthly[monthAbbr].cases,

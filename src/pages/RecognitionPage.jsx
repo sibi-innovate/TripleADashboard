@@ -98,7 +98,7 @@ function BirthdaysTab({ monthIdx }) {
     return (
       <EmptyState
         title="Birth date data not available"
-        message="Upload a data file that includes the BIRTH_DATE column to enable birthday celebrations."
+        message="Re-upload your data file to enable birthday celebrations. Make sure the file includes the AGENT_BIRTHDATE column."
       />
     );
   }
@@ -180,7 +180,7 @@ function NewAdvisorsTab({ monthIdx }) {
               {initials(a.name)}
             </div>
             <p className="text-xs font-bold leading-snug" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{a.name}</p>
-            <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>{a.unit || '—'}</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>{a.unitName || '—'}</p>
             <span
               className="mt-2 inline-block text-[9px] font-bold rounded px-1.5 py-0.5"
               style={{
@@ -280,11 +280,11 @@ function AwardsTab({ monthIdx }) {
       {awardTab === 'mta' && (() => {
         const list = getMostTrustedAdvisors(agents, abbr);
         return list.length === 0
-          ? <EmptyState title="No MTA qualifiers" message="No advisors with more than 2 cases this month." />
+          ? <EmptyState title="No MTA qualifiers" message="No advisors with 2 or more cases this month." />
           : (
             <RankedTable
               title="Most Trusted Advisors (MTA)"
-              subtitle="Monthly case count > 2"
+              subtitle="Monthly case count ≥ 2"
               rows={list}
               columns={[
                 { label: 'Advisor', render: r => r.agent.name },
@@ -525,84 +525,117 @@ function HighlightsTab({ monthIdx }) {
   const leaderGama = getLeaderGamaProgress(agents, monthIdx);
   const agencyGama = getAgencyGamaStatus(agents, monthIdx);
 
+  // Agency Ace Challenge
+  const ACE_FYC = 300000, ACE_CASES = 24, ACE_PERS = 82.5;
+  const aceAdvisors = agents
+    .filter(a => a.manpowerInd)
+    .map(a => {
+      const ytdFyc   = MONTH_ABBRS.slice(0, monthIdx + 1).reduce((s, abbr) => s + (a.monthly?.[abbr]?.fyc   || 0), 0);
+      const ytdCases = MONTH_ABBRS.slice(0, monthIdx + 1).reduce((s, abbr) => s + (a.monthly?.[abbr]?.cases || 0), 0);
+      const persVals = MONTH_ABBRS.slice(0, monthIdx + 1)
+        .map(abbr => a.monthly?.[abbr]?.persistency)
+        .filter(v => v != null && !isNaN(v));
+      const avgPers   = persVals.length > 0 ? persVals.reduce((s, v) => s + v, 0) / persVals.length : null;
+      const fycMet    = ytdFyc   >= ACE_FYC;
+      const casesMet  = ytdCases >= ACE_CASES;
+      const persMet   = avgPers == null || avgPers >= ACE_PERS;
+      const qualified = fycMet && casesMet && persMet;
+      return { agent: a, ytdFyc, ytdCases, avgPers, fycMet, casesMet, persMet, qualified };
+    })
+    .sort((a, b) => {
+      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      return b.ytdFyc - a.ytdFyc;
+    });
+
+  const qualCount = aceAdvisors.filter(x => x.qualified).length;
+
   return (
     <div className="space-y-8">
 
-      {/* Path to MDRT Table */}
+      {/* ── 1. Agency GAMA Status — TOP ── */}
+      <section>
+        <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+          Agency GAMA Status
+        </h2>
+        <div className="bg-white rounded-xl p-5" style={{ border: '1px solid #E8E9ED' }}>
+          <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>Total Agency YTD FYP</p>
+              <p className="text-2xl font-extrabold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{formatCurrency(agencyGama.totalFyp)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>Current Tier</p>
+              <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700" style={{ fontFamily: 'AIA Everest' }}>{agencyGama.tier.label}</span>
+            </div>
+          </div>
+          {agencyGama.nextTier && (() => {
+            const pct = Math.min(100, (agencyGama.totalFyp / agencyGama.nextTier.min) * 100);
+            return (
+              <>
+                <div className="flex justify-between text-[11px] mb-1" style={{ fontFamily: 'AIA Everest' }}>
+                  <span style={{ color: '#6B7180' }}>Progress to <strong style={{ color: '#1F78AD' }}>{agencyGama.nextTier.label}</strong></span>
+                  <span className="font-bold" style={{ color: '#1F78AD' }}>{pct.toFixed(1)}%</span>
+                </div>
+                <div className="h-3 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#EFF6FF' }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: '#1F78AD' }} />
+                </div>
+                <p className="text-[11px]" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>
+                  Balance: <span className="font-bold" style={{ color: '#D31145', fontFamily: 'DM Mono, monospace' }}>{formatCurrency(agencyGama.balance)}</span> more to reach {agencyGama.nextTier.label}
+                </p>
+              </>
+            );
+          })()}
+          {!agencyGama.nextTier && (
+            <p className="text-sm font-bold mt-1" style={{ fontFamily: 'AIA Everest', color: '#4E9A51' }}>🏆 GAMA Platinum achieved!</p>
+          )}
+        </div>
+      </section>
+
+      {/* ── 2. Agency Ace Challenge ── */}
       <section>
         <h2 className="text-sm font-bold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-          Path to MDRT
+          Agency Ace Challenge
         </h2>
         <p className="text-[11px] mb-3" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
-          YTD FYP vs MDRT goal (₱{mdrtGoal.toLocaleString()}) · sorted by % of goal
+          Individual annual award · FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%
+          {' '}· <strong style={{ color: '#4E9A51' }}>{qualCount}</strong> of {aceAdvisors.length} on track
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr>
-                {['Advisor','Unit','Tier','YTD FYP','% of Goal','Balance to Next Tier'].map(h => (
+                {['Advisor', 'Unit', 'FYC YTD', 'Cases YTD', 'Persistency', 'Status'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {pathToMdrt.map(({ agent, tier, ytdFyp, pct, balanceToNext }) => {
-                const colors = TIER_COLORS[tier.key] || TIER_COLORS.sa;
-                return (
-                  <tr key={agent.code} className="border-b border-gray-50 even:bg-gray-50">
-                    <td className="py-2 px-3 font-medium text-gray-700">{agent.name}</td>
-                    <td className="py-2 px-3 text-gray-500 text-[11px]">{agent.unitName || '—'}</td>
-                    <td className="py-2 px-3">
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: colors.bg, color: colors.text }}>
-                        {tier.abbr}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 font-medium" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
-                      {formatCurrency(ytdFyp, true)}
-                    </td>
-                    <td className="py-2 px-3 font-bold" style={{ fontFamily: 'DM Mono, monospace', color: pct >= 1 ? '#4E9A51' : pct >= 0.7 ? '#C97B1A' : '#D31145' }}>
-                      {(pct * 100).toFixed(1)}%
-                    </td>
-                    <td className="py-2 px-3 text-gray-600" style={{ fontFamily: 'DM Mono, monospace' }}>
-                      {balanceToNext > 0 ? formatCurrency(balanceToNext, true) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* Leader GAMA Progress */}
-      <section>
-        <h2 className="text-sm font-bold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-          Leader GAMA Progress
-        </h2>
-        <p className="text-[11px] mb-3" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
-          YTD unit FYP vs GAMA qualification tiers
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                {['Unit Manager','YTD Unit FYP','Current GAMA Tier','Next Tier','Balance'].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#1F78AD]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {leaderGama.map(({ unitName, ytdFyp, tier, nextTier, balance }) => (
-                <tr key={unitName} className="border-b border-gray-50 even:bg-gray-50">
-                  <td className="py-2 px-3 font-medium text-gray-700">{unitName}</td>
-                  <td className="py-2 px-3 font-medium" style={{ fontFamily: 'DM Mono, monospace' }}>{formatCurrency(ytdFyp, true)}</td>
+              {aceAdvisors.map(({ agent: a, ytdFyc, ytdCases, avgPers, fycMet, casesMet, persMet, qualified }) => (
+                <tr key={a.code} className="border-b border-gray-50 even:bg-gray-50 hover:bg-gray-50/50">
+                  <td className="py-2 px-3 text-gray-700 font-medium text-[12px]">{a.name}</td>
+                  <td className="py-2 px-3 text-gray-500 text-[11px]">{a.unitName || '—'}</td>
                   <td className="py-2 px-3">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{tier.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-10 h-1.5 rounded-full overflow-hidden flex-shrink-0" style={{ backgroundColor: '#F2F3F5' }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, ytdFyc / ACE_FYC * 100)}%`, backgroundColor: fycMet ? '#4E9A51' : '#D31145' }} />
+                      </div>
+                      <span className="text-[11px] font-medium" style={{ color: fycMet ? '#4E9A51' : '#1C1C28' }}>
+                        ₱{Math.round(ytdFyc / 1000)}k
+                      </span>
+                    </div>
                   </td>
-                  <td className="py-2 px-3 text-[11px] text-gray-500">{nextTier?.label || '—'}</td>
-                  <td className="py-2 px-3 text-gray-600" style={{ fontFamily: 'DM Mono, monospace' }}>
-                    {balance > 0 ? formatCurrency(balance, true) : '—'}
+                  <td className="py-2 px-3">
+                    <span className="text-[11px] font-medium" style={{ color: casesMet ? '#4E9A51' : '#1C1C28' }}>{ytdCases}</span>
+                  </td>
+                  <td className="py-2 px-3">
+                    {avgPers != null
+                      ? <span className="text-[11px] font-medium" style={{ color: persMet ? '#4E9A51' : '#1C1C28' }}>{avgPers.toFixed(1)}%</span>
+                      : <span className="text-[11px] text-gray-300">—</span>}
+                  </td>
+                  <td className="py-2 px-3">
+                    {qualified
+                      ? <span className="text-[10px] font-bold rounded px-1.5 py-0.5" style={{ backgroundColor: '#EAF4EB', color: '#4E9A51' }}>✓ On Track</span>
+                      : <span className="text-[10px] rounded px-1.5 py-0.5" style={{ backgroundColor: '#F2F3F5', color: '#6B7180' }}>In Progress</span>}
                   </td>
                 </tr>
               ))}
@@ -611,30 +644,76 @@ function HighlightsTab({ monthIdx }) {
         </div>
       </section>
 
-      {/* Agency GAMA Status */}
+      {/* ── 3. Path to MDRT — top 15 + progress bars ── */}
       <section>
-        <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-          Agency GAMA Status
+        <h2 className="text-sm font-bold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+          Path to MDRT
         </h2>
-        <div className="bg-white rounded-xl p-5" style={{ border: '1px solid #E8E9ED' }}>
-          <div className="flex items-start justify-between flex-wrap gap-4">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>Total Agency YTD FYP</p>
-              <p className="text-2xl font-extrabold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{formatCurrency(agencyGama.totalFyp)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>Current Tier</p>
-              <span className="text-sm font-bold px-2 py-1 rounded bg-blue-100 text-blue-700">{agencyGama.tier.label}</span>
-            </div>
-          </div>
-          {agencyGama.nextTier && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-500" style={{ fontFamily: 'AIA Everest' }}>
-                Next: <span className="font-bold text-gray-700">{agencyGama.nextTier.label}</span>
-                {' '}· Balance: <span className="font-bold" style={{ color: '#D31145', fontFamily: 'DM Mono, monospace' }}>{formatCurrency(agencyGama.balance)}</span>
-              </p>
-            </div>
-          )}
+        <p className="text-[11px] mb-3" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+          Top 15 by YTD FYP · Goal: ₱{mdrtGoal.toLocaleString()} · sorted by % of goal
+        </p>
+        <div className="space-y-2">
+          {pathToMdrt.slice(0, 15).map(({ agent, tier, ytdFyp, pct, balanceToNext }, i) => {
+            const colors   = TIER_COLORS[tier.key] || TIER_COLORS.sa;
+            const barColor = pct >= 1 ? '#4E9A51' : pct >= 0.7 ? '#C97B1A' : '#D31145';
+            return (
+              <div key={agent.code} className="bg-white rounded-xl p-3" style={{ border: '1px solid #E8E9ED' }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-bold w-5 text-center flex-shrink-0" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>{i + 1}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: colors.bg, color: colors.text }}>{tier.abbr}</span>
+                  <span className="text-xs font-bold truncate flex-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</span>
+                  <span className="text-[10px] text-gray-500 flex-shrink-0 hidden sm:block">{agent.unitName || '—'}</span>
+                  <span className="text-xs font-bold flex-shrink-0" style={{ fontFamily: 'DM Mono, monospace', color: barColor }}>{(pct * 100).toFixed(1)}%</span>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#F2F3F5' }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, pct * 100)}%`, backgroundColor: barColor }} />
+                  {/* 70% Aspirant marker */}
+                  <div className="absolute top-0 bottom-0 w-px opacity-40" style={{ left: '70%', backgroundColor: '#C97B1A' }} />
+                </div>
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[9px]" style={{ fontFamily: 'DM Mono, monospace', color: '#6B7180' }}>{formatCurrency(ytdFyp, true)} YTD</span>
+                  {balanceToNext > 0 && (
+                    <span className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>{formatCurrency(balanceToNext, true)} to next tier</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── 4. Leader GAMA Progress — with progress bars ── */}
+      <section>
+        <h2 className="text-sm font-bold mb-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+          Leader GAMA Progress
+        </h2>
+        <p className="text-[11px] mb-3" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+          YTD unit FYP vs GAMA qualification tiers
+        </p>
+        <div className="space-y-2">
+          {leaderGama.map(({ unitName, ytdFyp, tier, nextTier, balance }) => {
+            const barPct = nextTier ? Math.min(100, (ytdFyp / nextTier.min) * 100) : 100;
+            return (
+              <div key={unitName} className="bg-white rounded-xl p-3" style={{ border: '1px solid #E8E9ED' }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#1F78AD', fontFamily: 'AIA Everest' }}>{tier.label}</span>
+                  <span className="text-xs font-bold truncate flex-1" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{unitName}</span>
+                  <span className="text-xs font-bold flex-shrink-0" style={{ fontFamily: 'DM Mono, monospace', color: '#1F78AD' }}>{formatCurrency(ytdFyp, true)}</span>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#EFF6FF' }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, backgroundColor: '#1F78AD' }} />
+                </div>
+                {nextTier ? (
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>{barPct.toFixed(1)}% to {nextTier.label}</span>
+                    {balance > 0 && <span className="text-[9px]" style={{ fontFamily: 'DM Mono, monospace', color: '#6B7180' }}>{formatCurrency(balance, true)} needed</span>}
+                  </div>
+                ) : (
+                  <p className="text-[9px] mt-0.5 font-bold" style={{ color: '#4E9A51', fontFamily: 'AIA Everest' }}>🏆 GAMA Platinum!</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 

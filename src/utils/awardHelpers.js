@@ -187,10 +187,11 @@ export function getUnitAwards(agents, monthAbbr) {
 
   const units = Array.from(unitMap.values())
 
-  const topByFyp = [...units].sort((a, b) => b.fyp - a.fyp).slice(0, 3)
-  const topByRecruitment = [...units].sort((a, b) => b.newRecruits - a.newRecruits || b.fyp - a.fyp).slice(0, 1)
-  const topByProducing = [...units].sort((a, b) => b.producing - a.producing || b.fyp - a.fyp).slice(0, 3)
-  const topByCases = [...units].sort((a, b) => b.cases - a.cases || b.fyp - a.fyp).slice(0, 3)
+  // Only include units that actually have a non-zero value in the metric being awarded
+  const topByFyp         = [...units].filter(u => u.fyp         > 0).sort((a, b) => b.fyp         - a.fyp         || b.cases - a.cases).slice(0, 3)
+  const topByRecruitment = [...units].filter(u => u.newRecruits > 0).sort((a, b) => b.newRecruits  - a.newRecruits  || b.fyp   - a.fyp).slice(0, 3)
+  const topByProducing   = [...units].filter(u => u.producing   > 0).sort((a, b) => b.producing    - a.producing    || b.fyp   - a.fyp).slice(0, 3)
+  const topByCases       = [...units].filter(u => u.cases       > 0).sort((a, b) => b.cases        - a.cases        || b.fyp   - a.fyp).slice(0, 3)
 
   return { topByFyp, topByRecruitment, topByProducing, topByCases }
 }

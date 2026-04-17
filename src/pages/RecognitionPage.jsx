@@ -534,10 +534,9 @@ function HighlightsTab({ monthIdx }) {
       const qualified = fycMet && casesMet && persMet;
       return { agent: a, ytdFyc, ytdCases, avgPers, fycMet, casesMet, persMet, qualified };
     })
-    .sort((a, b) => {
-      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
-      return b.ytdFyc - a.ytdFyc;
-    });
+    .filter(a => a.ytdFyc > 0)           // no award if metric is 0
+    .sort((a, b) => b.ytdFyc - a.ytdFyc) // top 15 by YTD FYC
+    .slice(0, 15);
 
   const qualCount = aceAdvisors.filter(x => x.qualified).length;
 
@@ -589,7 +588,7 @@ function HighlightsTab({ monthIdx }) {
           Agency Ace Challenge
         </h2>
         <p className="text-[11px] mb-3" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
-          Individual annual award · FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%
+          Top 15 by YTD FYC · Annual thresholds: FYC ≥ ₱300,000 · Cases ≥ 24 · Persistency ≥ 82.5%
           {' '}· <strong style={{ color: '#4E9A51' }}>{qualCount}</strong> of {aceAdvisors.length} on track
         </p>
         <div className="overflow-x-auto">

@@ -11,9 +11,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { TIER_COLORS } from '../constants'
+import { usePhotoVersion } from '../context/PhotoVersionContext'
 
 export default function AgentAvatar({ agentCode, name = '', size = 36, tierKey, className = '' }) {
   const [photoUrl, setPhotoUrl] = useState(null)
+  const { version } = usePhotoVersion()
 
   useEffect(() => {
     if (!agentCode) {
@@ -21,8 +23,9 @@ export default function AgentAvatar({ agentCode, name = '', size = 36, tierKey, 
       return
     }
     const { data } = supabase.storage.from('agent-photos').getPublicUrl(`${agentCode}.jpg`)
-    setPhotoUrl(data?.publicUrl ?? null)
-  }, [agentCode])
+    // Append version as cache-buster so all avatars refresh immediately after upload
+    setPhotoUrl(data?.publicUrl ? `${data.publicUrl}?v=${version}` : null)
+  }, [agentCode, version])
 
   // Derive initials: first char of first word + first char of last word
   const words = name.trim().split(/\s+/).filter(Boolean)

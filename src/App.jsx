@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { DataProvider, useData } from './context/DataContext'
+import { PhotoVersionProvider } from './context/PhotoVersionContext'
 import Navbar from './components/Navbar'
 import UploadPage from './pages/UploadPage'
 import OverviewPage from './pages/OverviewPage'
@@ -49,6 +50,7 @@ function WithNavbar({ children }) {
 
 export default function App() {
   return (
+    <PhotoVersionProvider>
     <DataProvider>
       <BrowserRouter>
         <Routes>
@@ -73,5 +75,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </DataProvider>
+    </PhotoVersionProvider>
   )
 }

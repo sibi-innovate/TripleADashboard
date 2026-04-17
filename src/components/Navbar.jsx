@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { supabase } from '../lib/supabase';
-import { CURRENT_MONTH_IDX, MONTH_ABBRS } from '../constants';
+import { CURRENT_MONTH_IDX } from '../constants';
 import { exportFullReport } from '../utils/exportExcel';
 
 // SVG icon set — AIA Qi monoline style, 16×16 viewBox
@@ -72,7 +72,7 @@ const TABS = [
   { key: 'team',        label: 'Team',        icon: Icons.team,        path: '/agents',         activePaths: ['/agents', '/units', '/activation'] },
   { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard',    activePaths: ['/leaderboard'] },
   { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',          activePaths: ['/goals', '/targets'] },
-  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition',    activePaths: ['/recognition'], badge: true },
+  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition',    activePaths: ['/recognition'] },
   { key: 'more',        label: 'More',        icon: Icons.more,        path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
   { key: 'settings',    label: 'Settings',    icon: Icons.settings,    path: '/settings',       activePaths: ['/settings'] },
 ];
@@ -83,7 +83,7 @@ const BOTTOM_TABS = [
   { key: 'team',        label: 'Team',        icon: Icons.team,        path: '/agents',      activePaths: ['/agents', '/units', '/activation'] },
   { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard', activePaths: ['/leaderboard'] },
   { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',       activePaths: ['/goals', '/targets'] },
-  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition', activePaths: ['/recognition'], badge: true },
+  { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition', activePaths: ['/recognition'] },
 ];
 
 function isTabActive(tab, pathname) {
@@ -94,27 +94,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { data, targets } = useData();
-  const agents = data?.agents;
   const [isAdmin, setIsAdmin] = useState(false);
-
-  // Badge count: birthdays + new advisors this month
-  const badgeCount = agents ? (() => {
-    const currentAbbr = MONTH_ABBRS[CURRENT_MONTH_IDX];
-    let count = 0;
-    agents.forEach(a => {
-      // New advisors this month
-      if (a.appointmentDate) {
-        const d = new Date(a.appointmentDate);
-        if (!isNaN(d) && d.getMonth() === CURRENT_MONTH_IDX) count++;
-      }
-      // Birthdays this month
-      if (a.birthDate) {
-        const d = new Date(a.birthDate);
-        if (!isNaN(d) && d.getMonth() === CURRENT_MONTH_IDX) count++;
-      }
-    });
-    return count;
-  })() : 0;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setIsAdmin(!!data?.user));

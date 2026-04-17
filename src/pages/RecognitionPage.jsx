@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { MONTH_LABELS, MONTH_ABBRS, CURRENT_MONTH_IDX, TIER_COLORS } from '../constants';
 import { formatCurrency } from '../utils/formatters';
+import AgentAvatar from '../components/AgentAvatar';
 import {
   getTopRookies, getTopOverall,
   getMostTrustedAdvisors, getMostProductiveAdvisors,
@@ -129,11 +130,8 @@ function BirthdaysTab({ monthIdx }) {
               boxShadow: isToday ? '0 0 0 3px rgba(211,17,69,0.12)' : 'none',
             }}
           >
-            <div
-              className="w-12 h-12 rounded-full mx-auto mb-2 flex items-center justify-center text-base font-bold text-white"
-              style={{ backgroundColor: isToday ? '#D31145' : 'var(--char-30, #B0B3BC)', fontFamily: 'AIA Everest' }}
-            >
-              {initials(a.name)}
+            <div className="mx-auto mb-2 w-12 h-12">
+              <AgentAvatar agentCode={a.code} name={a.name} size={48} className="!rounded-full" />
             </div>
             <p className="text-xs font-bold leading-snug" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{a.name}</p>
             <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'DM Mono, monospace' }}>
@@ -173,11 +171,8 @@ function NewAdvisorsTab({ monthIdx }) {
             className="bg-white rounded-xl p-4"
             style={{ border: '1px solid var(--border, #E8E9ED)' }}
           >
-            <div
-              className="w-10 h-10 rounded-full mb-2 flex items-center justify-center text-sm font-bold text-white"
-              style={{ backgroundColor: '#1F78AD', fontFamily: 'AIA Everest' }}
-            >
-              {initials(a.name)}
+            <div className="mb-2 w-10 h-10">
+              <AgentAvatar agentCode={a.code} name={a.name} size={40} className="!rounded-full" />
             </div>
             <p className="text-xs font-bold leading-snug" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{a.name}</p>
             <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>{a.unitName || '—'}</p>
@@ -427,10 +422,7 @@ function RankScoreList({ items, title, abbr }) {
               style={{ backgroundColor: i === 0 ? '#C97B1A' : i === 1 ? '#B0B3BC' : i === 2 ? '#CD7F32' : '#D31145', fontFamily: 'AIA Everest' }}>
               {i + 1}
             </div>
-            <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold text-white"
-              style={{ backgroundColor: '#D31145', fontFamily: 'AIA Everest' }}>
-              {initials(item.agent.name)}
-            </div>
+            <AgentAvatar agentCode={item.agent.code} name={item.agent.name} size={36} className="!rounded-full flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{item.agent.name}</p>
               <p className="text-[10px]" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>{item.agent.unitName || '—'}</p>

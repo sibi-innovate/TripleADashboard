@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { usePhotoVersion } from '../context/PhotoVersionContext'
 
 // ─── Square Crop Modal ────────────────────────────────────────────────────────
 // Displays the chosen image in a fixed square container. The user drags to
@@ -278,6 +279,7 @@ export default function PhotoUpload({ agentCode, agentName, onSuccess, children 
   const [uploading,  setUploading]  = useState(false)
   const [errorMsg,   setErrorMsg]   = useState(null)
   const inputRef = useRef(null)
+  const { bumpPhotoVersion } = usePhotoVersion()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user: u } }) => setUser(u ?? null))
@@ -312,6 +314,7 @@ export default function PhotoUpload({ agentCode, agentName, onSuccess, children 
       return
     }
 
+    bumpPhotoVersion()   // refresh all AgentAvatar instances across the app
     onSuccess?.()
   }
 

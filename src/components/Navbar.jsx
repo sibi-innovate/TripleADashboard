@@ -80,7 +80,7 @@ const TABS = [
   { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',          activePaths: ['/goals', '/targets'] },
   { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition',    activePaths: ['/recognition'] },
   { key: 'history',     label: 'History',     icon: Icons.history,     path: '/history',        activePaths: ['/history'] },
-  { key: 'more',        label: 'More',        icon: Icons.more,        path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
+  { key: 'more',        label: 'Bonuses',     icon: Icons.more,        path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
   { key: 'settings',    label: 'Settings',    icon: Icons.settings,    path: '/settings',       activePaths: ['/settings'] },
 ];
 

@@ -108,10 +108,10 @@ function SeasonalityChart({ yearStats, valueKey, format }) {
   return (
     <div>
       {/* Chart */}
-      <div className="flex items-end gap-0.5" style={{ height: CHART_H }}>
+      <div className="flex items-end gap-0.5 overflow-hidden" style={{ height: CHART_H }}>
         {MONTH_ABBRS.map((abbr, mi) => (
           <div key={abbr} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: CHART_H }}>
-            <div className="w-full flex flex-col-reverse items-center gap-0.5" style={{ height: CHART_H - 14 }}>
+            <div className="w-full flex flex-col-reverse items-center gap-0.5 overflow-hidden" style={{ height: CHART_H - 14 }}>
               {[...yearStats].sort((a, b) => a.year - b.year).map((s, yi) => {
                 const val = s[monthlyKey]?.[mi]?.value || 0
                 const h = Math.max(val > 0 ? (val / max) * (CHART_H - 14) : 0, val > 0 ? 2 : 0)

@@ -37,7 +37,18 @@ export function DataProvider({ children }) {
         if (fetchError) throw fetchError
 
         if (row?.data) {
-          setData(row.data)
+          // Extract embedded history (written during historical uploads for anon-device access)
+          const { _history, ...mainData } = row.data
+          setData(mainData)
+          if (_history && typeof _history === 'object') {
+            const hist = {}
+            for (const [yr, d] of Object.entries(_history)) {
+              hist[Number(yr)] = d
+            }
+            setAllHistoricalData(hist)
+            const priorYearData = hist[CURRENT_YEAR - 1]
+            if (priorYearData) setHistoricalData(priorYearData)
+          }
         }
       } catch (e) {
         // Supabase unavailable or no data yet — silently continue
@@ -121,7 +132,8 @@ export function DataProvider({ children }) {
     if (!rows || rows.length === 0) return
     const hist = {}
     for (const row of rows) hist[row.year] = row.data
-    setAllHistoricalData(hist)
+    // Merge with any history already loaded from agency_data._history (for anon devices)
+    setAllHistoricalData(prev => ({ ...prev, ...hist }))
     // Keep historicalData pointing at the most recent prior year (agent profile YoY)
     const priorYearData = hist[CURRENT_YEAR - 1]
     if (priorYearData) setHistoricalData(priorYearData)
@@ -144,10 +156,19 @@ export function DataProvider({ children }) {
       })
 
       if (year === CURRENT_YEAR) {
-        // Current year → overwrite main agency_data (same as Upload page)
+        // Current year → overwrite main agency_data but preserve embedded _history
+        const { data: currentRow } = await supabase
+          .from('agency_data')
+          .select('data')
+          .eq('id', 1)
+          .single()
+        const existingHistory = currentRow?.data?._history ?? {}
+        const dataToSave = Object.keys(existingHistory).length > 0
+          ? { ...result, _history: existingHistory }
+          : result
         const { error: saveError } = await supabase
           .from('agency_data')
-          .upsert({ id: 1, data: result, uploaded_at: new Date().toISOString() })
+          .upsert({ id: 1, data: dataToSave, uploaded_at: new Date().toISOString() })
         if (saveError) throw new Error('Upload failed: ' + saveError.message)
         setData(result)
       } else {
@@ -161,6 +182,22 @@ export function DataProvider({ children }) {
         if (saveError) throw new Error('History upload failed: ' + saveError.message)
         // Keep the most-recent-prior-year pointer for agent profile YoY
         if (year === CURRENT_YEAR - 1) setHistoricalData(result)
+        // Also embed in agency_data so anonymous devices can read historical data
+        try {
+          const { data: currentRow } = await supabase
+            .from('agency_data')
+            .select('data')
+            .eq('id', 1)
+            .single()
+          const existingHistory = currentRow?.data?._history ?? {}
+          const embedded = {
+            ...(currentRow?.data ?? {}),
+            _history: { ...existingHistory, [year]: result },
+          }
+          await supabase.from('agency_data').upsert({ id: 1, data: embedded })
+        } catch (embedErr) {
+          console.warn('DataContext: could not embed history in agency_data:', embedErr.message)
+        }
       }
 
       // Update the all-years map regardless of which year
@@ -196,10 +233,19 @@ export function DataProvider({ children }) {
         : CURRENT_YEAR
 
       if (dataYear === CURRENT_YEAR) {
-        // Same year: overwrite current data (existing behavior)
+        // Same year: overwrite current data but preserve embedded _history
+        const { data: currentRow } = await supabase
+          .from('agency_data')
+          .select('data')
+          .eq('id', 1)
+          .single()
+        const existingHistory = currentRow?.data?._history ?? {}
+        const dataToSave = Object.keys(existingHistory).length > 0
+          ? { ...result, _history: existingHistory }
+          : result
         const { error: saveError } = await supabase
           .from('agency_data')
-          .upsert({ id: 1, data: result, uploaded_at: new Date().toISOString() })
+          .upsert({ id: 1, data: dataToSave, uploaded_at: new Date().toISOString() })
 
         if (saveError) throw new Error('Upload failed: ' + saveError.message)
 

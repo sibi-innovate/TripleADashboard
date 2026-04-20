@@ -348,20 +348,18 @@ export function getActivationStatus(cases) {
 // ─── FORMATTING HELPERS ────────────────────────────────────────────────────────
 
 /**
- * Format currency in Philippine Peso with K/M abbreviation.
- * e.g. 1234567 → '₱1.23M', 12345 → '₱12.3K'
+ * Format currency in Philippine Peso — full value with 1 decimal place.
+ * e.g. 1234567.8 → '₱1,234,567.8'   12345 → '₱12,345.0'
+ * Pass decimals=0 for whole-number display.
  */
 export function formatPeso(value, decimals = 1) {
-  if (value === null || value === undefined || isNaN(value)) return '₱0'
-  const abs = Math.abs(value)
-  const sign = value < 0 ? '-' : ''
-  if (abs >= 1_000_000) {
-    return `${sign}₱${(abs / 1_000_000).toFixed(decimals)}M`
-  }
-  if (abs >= 1_000) {
-    return `${sign}₱${(abs / 1_000).toFixed(decimals)}K`
-  }
-  return `${sign}₱${abs.toFixed(0)}`
+  if (value === null || value === undefined || isNaN(value)) return '₱0.0'
+  const n   = Number(value)
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  const parts = abs.toFixed(decimals).split('.')
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return `${sign}₱${parts.join('.')}`
 }
 
 /**

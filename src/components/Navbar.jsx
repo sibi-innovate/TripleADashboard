@@ -41,6 +41,12 @@ const Icons = {
       <polygon points="8,1.5 10.09,6.26 15.27,6.9 11.5,10.47 12.55,15.6 8,13 3.45,15.6 4.5,10.47 0.73,6.9 5.91,6.26" />
     </svg>
   ),
+  history: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1,13 4,8 7,10 10,5 13,7 15,3" />
+      <line x1="1" y1="13" x2="15" y2="13" />
+    </svg>
+  ),
   more: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="3" cy="8" r="1" fill="currentColor" stroke="none" />
@@ -73,6 +79,7 @@ const TABS = [
   { key: 'rankings',    label: 'Rankings',    icon: Icons.rankings,    path: '/leaderboard',    activePaths: ['/leaderboard'] },
   { key: 'goals',       label: 'Goals',       icon: Icons.targets,     path: '/goals',          activePaths: ['/goals', '/targets'] },
   { key: 'recognition', label: 'Recognition', icon: Icons.recognition, path: '/recognition',    activePaths: ['/recognition'] },
+  { key: 'history',     label: 'History',     icon: Icons.history,     path: '/history',        activePaths: ['/history'] },
   { key: 'more',        label: 'More',        icon: Icons.more,        path: '/quarterly-bonus',activePaths: ['/quarterly-bonus', '/awards'] },
   { key: 'settings',    label: 'Settings',    icon: Icons.settings,    path: '/settings',       activePaths: ['/settings'] },
 ];

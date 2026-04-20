@@ -6,6 +6,7 @@ import SectionHeader from '../components/SectionHeader'
 import ProgressBar from '../components/ProgressBar'
 import KpiCard from '../components/KpiCard'
 import MonthlyBarChart from '../components/MonthlyBarChart'
+import AgentAvatar from '../components/AgentAvatar'
 import {
   MONTH_ABBRS, MONTH_LABELS, CURRENT_MONTH_IDX,
 } from '../constants'
@@ -105,21 +106,13 @@ function AlertStrip({ count, onClick }) {
 }
 
 function TopContributorRow({ rank, agent, fyp }) {
-  const initials = name => {
-    const p = name?.trim().split(/\s+/) || []
-    if (p.length <= 1) return (p[0]?.[0] || '?').toUpperCase()
-    return (p[0][0] + p[p.length - 1][0]).toUpperCase()
-  }
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
       <span className="w-5 text-center text-xs font-bold flex-shrink-0"
         style={{ fontFamily: 'DM Mono, monospace', color: rank <= 3 ? '#D31145' : 'var(--char-60,#6B7180)' }}>
         {rank}
       </span>
-      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
-        style={{ backgroundColor: rank <= 3 ? '#D31145' : 'var(--char-30,#B0B3BC)', fontFamily: 'AIA Everest' }}>
-        {initials(agent.name)}
-      </div>
+      <AgentAvatar agentCode={agent.code} name={agent.name} size={32} className="!rounded-full flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</p>
         <p className="text-[10px] truncate" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
@@ -154,19 +147,11 @@ function getPropensityRemarks(agent, score, monthIdx, allAgents) {
 
 function PropensityRow({ agent, score, monthIdx = CURRENT_MONTH_IDX, allAgents = [], compact = false }) {
   const remarks = getPropensityRemarks(agent, score, monthIdx, allAgents)
-  const initials = name => {
-    const p = name?.trim().split(/\s+/) || []
-    if (p.length <= 1) return (p[0]?.[0] || '?').toUpperCase()
-    return (p[0][0] + p[p.length - 1][0]).toUpperCase()
-  }
   const scoreColor = score >= 80 ? '#D31145' : score >= 60 ? 'var(--amber,#C97B1A)' : 'var(--char-60,#6B7180)'
 
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
-      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
-        style={{ backgroundColor: scoreColor, fontFamily: 'AIA Everest' }}>
-        {initials(agent.name)}
-      </div>
+      <AgentAvatar agentCode={agent.code} name={agent.name} size={32} className="!rounded-full flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{agent.name}</p>
         <p className="text-[10px] truncate" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
@@ -239,6 +224,119 @@ function PropensityModal({ list, monthIdx, allAgents, onClose }) {
   )
 }
 
+// ─── Agency Rank Card ─────────────────────────────────────────────────────────
+// Computes Amora's rank among agencies from the parsed Agency sheet.
+// Falls back to the manually-entered rank in targets if no Excel data.
+
+const SCOPE_LABELS = { nationwide: 'Nationwide', territory: 'Territory', region: 'Region' }
+
+function AgencyRankCard({ data, targets, period }) {
+  const [scope, setScope] = useState('nationwide')
+
+  const agencyRankData = data?.agencyRankData ?? []
+  const { mode, monthIdx } = period
+
+  // Find Amora's row (case-insensitive match on "AMORA" or "DAVAO-AMORA")
+  const amoraRow = agencyRankData.find(a =>
+    a.name.toUpperCase().includes('DAVAO-AMORA') ||
+    a.name.toUpperCase().includes('DAVAO AMORA') ||
+    a.name.toUpperCase().includes('AMORA')
+  )
+
+  // ── Compute rank from Excel data ──────────────────────────────────────────
+  let computedRank = null, computedTotal = null
+  let scopeLabel = 'agencies nationwide'
+  if (amoraRow && agencyRankData.length > 0) {
+    // Filter pool by scope
+    let pool = agencyRankData
+    if (scope === 'territory' && amoraRow.territory) {
+      pool = pool.filter(a => a.territory === amoraRow.territory)
+      scopeLabel = `agencies in ${amoraRow.territory}`
+    } else if (scope === 'region' && amoraRow.region) {
+      pool = pool.filter(a => a.region === amoraRow.region)
+      scopeLabel = `agencies in ${amoraRow.region}`
+    }
+
+    // Value per agency for the current period
+    const getValue = agency => {
+      if (mode === 'ytd') return agency.anpYtd || 0
+      return agency.monthly?.[MONTH_ABBRS[monthIdx]]?.anp || 0
+    }
+
+    const sorted = [...pool].filter(a => getValue(a) > 0).sort((a, b) => getValue(b) - getValue(a))
+    const rankIdx = sorted.findIndex(a => a.name === amoraRow.name)
+    if (rankIdx >= 0) {
+      computedRank  = rankIdx + 1
+      computedTotal = sorted.length
+    }
+  }
+
+  // ── Decide what to show ───────────────────────────────────────────────────
+  // Prefer computed rank; fall back to manually-entered rank in targets
+  const displayRank  = computedRank  ?? (targets?.agency_rank  > 0 ? targets.agency_rank  : null)
+  const displayTotal = computedTotal ?? (targets?.total_agencies > 0 ? targets.total_agencies : null)
+
+  // Show nothing if no rank data at all
+  if (!displayRank) return null
+
+  const isComputed = computedRank != null
+
+  return (
+    <div
+      className="rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4"
+      style={{ background: 'linear-gradient(135deg,#D31145 0%,#8B0A2F 100%)', color: '#fff' }}
+    >
+      {/* Rank number */}
+      <div className="flex items-center gap-3 flex-1">
+        <div className="text-5xl font-black leading-none flex-shrink-0"
+          style={{ fontFamily: 'DM Mono, monospace' }}>
+          #{displayRank}
+        </div>
+        <div>
+          <p className="text-sm font-extrabold" style={{ fontFamily: 'AIA Everest' }}>
+            Agency Rank — AIA Philippines
+          </p>
+          {displayTotal > 0 && (
+            <p className="text-xs mt-0.5" style={{ fontFamily: 'AIA Everest', opacity: 0.85 }}>
+              Out of {displayTotal} {scopeLabel}
+            </p>
+          )}
+          {!isComputed && (
+            <p className="text-[10px] mt-1" style={{ fontFamily: 'AIA Everest', opacity: 0.6 }}>
+              Manually entered · update in Settings
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Toggles — only show if we have real Excel data */}
+      {isComputed && agencyRankData.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {Object.entries(SCOPE_LABELS).map(([key, label]) => {
+            // Only show territory/region if Amora has that field
+            if (key === 'territory' && !amoraRow?.territory) return null
+            if (key === 'region'    && !amoraRow?.region)    return null
+            return (
+              <button
+                key={key}
+                onClick={() => setScope(key)}
+                className="px-2.5 py-1 rounded-md text-xs font-bold transition-all"
+                style={{
+                  fontFamily: 'AIA Everest',
+                  background: scope === key ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.15)',
+                  color: scope === key ? '#D31145' : '#fff',
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MapaCard({ label, rookieVal, seasonedVal, format = 'number' }) {
   const fmt = v => {
     if (v === null || v === undefined || isNaN(v)) return '—'
@@ -277,7 +375,7 @@ export default function OverviewPage() {
   const { data, isLoaded, targets, loadTargets } = useData()
 
   const [period, setPeriod] = useState({ mode: 'monthly', monthIdx: CURRENT_MONTH_IDX })
-  const [area, setArea] = useState('All')
+  const [area, setArea] = useState('all')
   const [segmentFilter, setSegmentFilter] = useState('All')
   const [trendMetric, setTrendMetric] = useState('FYP')
   const [showPropensityModal, setShowPropensityModal] = useState(false)
@@ -290,7 +388,7 @@ export default function OverviewPage() {
   // All agents filtered by area + segment
   const filteredAgents = useMemo(() => {
     let agents = data?.agents || []
-    if (area !== 'All') agents = agents.filter(a => a.area === area)
+    if (area !== 'all') agents = agents.filter(a => a.area?.startsWith(area))
     if (segmentFilter !== 'All') agents = agents.filter(a => a.segment === segmentFilter)
     return agents
   }, [data, area, segmentFilter])
@@ -475,6 +573,9 @@ export default function OverviewPage() {
             </button>
           ))}
         </div>
+
+        {/* Agency rank card — computed from Excel Agency sheet, falls back to manual targets */}
+        <AgencyRankCard data={data} targets={targets} period={period} />
 
         {/* 2. Goal Thermometers */}
         {(monthlyFypTarget > 0 || monthlyProdTarget > 0 || monthlyCasesTarget > 0) && (

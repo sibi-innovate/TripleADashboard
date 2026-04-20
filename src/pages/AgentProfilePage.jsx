@@ -14,6 +14,28 @@ import {
   calculateQuarterlyBonus, getAdvisorTier, getFycNextTierGap, formatPeso, formatPct,
 } from '../utils/calculations'
 
+// ─── Email + date helpers ──────────────────────────────────────────────────────
+
+function generateAiaEmail(name) {
+  if (!name) return null
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length < 2) return null
+  const firstName = parts[0].toLowerCase()
+  const lastName  = parts[parts.length - 1].toLowerCase()
+  if (parts.length === 2) return `${firstName}.${lastName}@aia.com.ph`
+  const mi = parts[1].charAt(0).toLowerCase()
+  return `${firstName}-${mi}.${lastName}@aia.com.ph`
+}
+
+function formatLicenseDate(isoStr) {
+  if (!isoStr) return null
+  const [y, m, d] = isoStr.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d).toLocaleDateString('en-PH', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  })
+}
+
 function computeRollingTargets(annualTarget, actuals) {
   const tgts = new Array(12).fill(0)
   let cum = 0
@@ -84,7 +106,7 @@ function BonusRow({ label, value, sub, highlight }) {
 
 // ─── Performance Tab ──────────────────────────────────────────────────────────
 
-function PerformanceTab({ agent, agents, targets }) {
+function PerformanceTab({ agent, agents, targets, historicalData }) {
   const [chartMetric, setChartMetric] = useState('FYP')
   const mdrtGoal = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
 
@@ -96,6 +118,27 @@ function PerformanceTab({ agent, agents, targets }) {
   // Projected year-end FYP at current pace
   const monthsElapsed = CURRENT_MONTH_IDX + 1
   const projectedYeFyp = monthsElapsed > 0 ? (ytdFyp / monthsElapsed) * 12 : 0
+
+  // ── Activity & Consistency ──
+  const activeMonths = MONTH_ABBRS.slice(0, monthsElapsed)
+    .filter(abbr => (agent.monthly?.[abbr]?.cases || 0) > 0).length
+  const consistencyPct = monthsElapsed > 0 ? (activeMonths / monthsElapsed) * 100 : 0
+
+  // Current consecutive streak (counting back from current month)
+  let currentStreak = 0
+  for (let i = CURRENT_MONTH_IDX; i >= 0; i--) {
+    if ((agent.monthly?.[MONTH_ABBRS[i]]?.cases || 0) > 0) currentStreak++
+    else break
+  }
+  // Best streak this year
+  let bestStreak = 0, tempStreak = 0
+  for (let i = 0; i <= CURRENT_MONTH_IDX; i++) {
+    if ((agent.monthly?.[MONTH_ABBRS[i]]?.cases || 0) > 0) { tempStreak++; bestStreak = Math.max(bestStreak, tempStreak) }
+    else tempStreak = 0
+  }
+
+  // ── Year-over-year: find this agent in historical data ──
+  const priorAgent = historicalData?.agents?.find(a => a.code === agent.code)
 
   // Unit average comparison
   const unitAgents = agents.filter(a => (a.unitName || a.unit) === (agent.unitName || agent.unit) && a.code !== agent.code)
@@ -124,6 +167,73 @@ function PerformanceTab({ agent, agents, targets }) {
           <YtdKpi label="FYP YTD" value={formatPeso(ytdFyp)} />
           <YtdKpi label="FYC YTD" value={formatPeso(ytdFyc)} />
           <YtdKpi label="Cases YTD" value={String(ytdCases)} />
+        </div>
+      </section>
+
+      {/* Activity & Consistency */}
+      <section>
+        <SectionHeader title="Activity & Consistency" />
+        <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          {/* Row 1: stat pills */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+              <p className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
+                style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Active Months</p>
+              <p className="text-xl font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                {activeMonths}
+                <span className="text-sm font-normal text-[#6B7180]"> / {monthsElapsed}</span>
+              </p>
+            </div>
+            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+              <p className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
+                style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Consistency</p>
+              <p className="text-xl font-bold" style={{
+                fontFamily: 'DM Mono, monospace',
+                color: consistencyPct >= 80 ? 'var(--green,#4E9A51)' : consistencyPct >= 50 ? 'var(--amber,#C97B1A)' : '#D31145',
+              }}>
+                {consistencyPct.toFixed(0)}%
+              </p>
+            </div>
+          </div>
+          {/* Consistency bar */}
+          <div className="h-2 rounded-full overflow-hidden mb-3" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${consistencyPct}%`,
+                backgroundColor: consistencyPct >= 80 ? 'var(--green,#4E9A51)' : consistencyPct >= 50 ? 'var(--amber,#C97B1A)' : '#D31145',
+              }} />
+          </div>
+          {/* Month activity dots */}
+          <div className="flex gap-1.5 flex-wrap mb-3">
+            {MONTH_ABBRS.slice(0, monthsElapsed).map((abbr, i) => {
+              const active = (agent.monthly?.[abbr]?.cases || 0) > 0
+              return (
+                <div key={abbr} className="flex flex-col items-center gap-0.5">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{
+                      backgroundColor: active ? 'var(--green,#4E9A51)' : 'var(--char-10,#F2F3F5)',
+                      border: `1px solid ${active ? 'var(--green,#4E9A51)' : 'var(--border,#E8E9ED)'}`,
+                    }}>
+                    {active && <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><path d="M1.5 4l2 2L6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>}
+                  </div>
+                  <span className="text-[8px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                    {abbr.charAt(0) + abbr.slice(1, 2).toLowerCase()}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {/* Streak stats */}
+          <div className="flex gap-4 text-[11px]" style={{ fontFamily: 'AIA Everest' }}>
+            <span style={{ color: 'var(--char-60,#6B7180)' }}>
+              Current streak: <strong style={{ color: currentStreak >= 3 ? '#D31145' : '#1C1C28' }}>
+                {currentStreak} {currentStreak === 1 ? 'month' : 'months'}
+              </strong>
+            </span>
+            <span style={{ color: 'var(--char-60,#6B7180)' }}>
+              Best this year: <strong style={{ color: '#1C1C28' }}>{bestStreak} {bestStreak === 1 ? 'month' : 'months'}</strong>
+            </span>
+          </div>
         </div>
       </section>
 
@@ -189,6 +299,76 @@ function PerformanceTab({ agent, agents, targets }) {
           <MonthlyBarChart data={chartData} currentMonthIdx={CURRENT_MONTH_IDX} metric={chartMetric} height={140} />
         </div>
       </section>
+
+      {/* vs Last Year */}
+      {priorAgent && (
+        <section>
+          <SectionHeader title={`vs Last Year (${new Date().getFullYear() - 1})`} />
+          <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            {/* Summary row */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label: 'FYP',   curr: ytdFyp,   prev: getAgentYtdFyp(priorAgent, CURRENT_MONTH_IDX),   fmt: formatPeso },
+                { label: 'FYC',   curr: ytdFyc,   prev: getAgentYtdFyc(priorAgent, CURRENT_MONTH_IDX),   fmt: formatPeso },
+                { label: 'Cases', curr: ytdCases, prev: getAgentYtdCases(priorAgent, CURRENT_MONTH_IDX), fmt: v => String(v) },
+              ].map(({ label, curr, prev, fmt }) => {
+                const diff = curr - prev
+                const pct  = prev > 0 ? (diff / prev) * 100 : null
+                const up   = diff > 0
+                return (
+                  <div key={label} className="rounded-lg p-3" style={{ backgroundColor: 'var(--char-10,#F2F3F5)' }}>
+                    <p className="text-[9px] font-semibold uppercase tracking-wide mb-1"
+                      style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>{label} YTD</p>
+                    <p className="text-sm font-bold leading-tight" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
+                      {fmt(curr)}
+                    </p>
+                    {pct !== null && (
+                      <p className="text-[10px] font-semibold mt-0.5"
+                        style={{ fontFamily: 'AIA Everest', color: up ? 'var(--green,#4E9A51)' : '#D31145' }}>
+                        {up ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+                      </p>
+                    )}
+                    <p className="text-[9px] mt-0.5" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                      Prior: {fmt(prev)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Monthly FYP comparison bars */}
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-2"
+              style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>Monthly FYP Comparison</p>
+            <div className="flex gap-1 items-end" style={{ height: 80 }}>
+              {MONTH_ABBRS.slice(0, monthsElapsed).map(abbr => {
+                const curr = agent.monthly?.[abbr]?.fyp || 0
+                const prev = priorAgent.monthly?.[abbr]?.fyp || 0
+                const maxVal = Math.max(curr, prev, 1)
+                return (
+                  <div key={abbr} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full flex gap-0.5 items-end" style={{ height: 60 }}>
+                      <div className="flex-1 rounded-t-sm transition-all duration-500"
+                        style={{ height: `${(curr / maxVal) * 100}%`, backgroundColor: '#D31145', minHeight: curr > 0 ? 2 : 0 }} />
+                      <div className="flex-1 rounded-t-sm transition-all duration-500"
+                        style={{ height: `${(prev / maxVal) * 100}%`, backgroundColor: 'var(--char-30,#B0B3BC)', minHeight: prev > 0 ? 2 : 0 }} />
+                    </div>
+                    <span className="text-[7px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                      {abbr.charAt(0) + abbr.slice(1, 2).toLowerCase()}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex gap-4 mt-2 text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#D31145]" /> {new Date().getFullYear()}
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: 'var(--char-30,#B0B3BC)' }} /> {new Date().getFullYear() - 1}
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* vs Unit Average */}
       {unitAgents.length > 0 && (
@@ -579,7 +759,7 @@ function GoalsTab({ agent, allAgents, targets }) {
 export default function AgentProfilePage() {
   const { code }             = useParams()
   const navigate             = useNavigate()
-  const { data, isLoaded, targets } = useData()
+  const { data, isLoaded, targets, historicalData } = useData()
   const [activeTab, setActiveTab]   = useState('performance')
 
   const agent  = data?.agents?.find(a => a.code === code)
@@ -599,20 +779,23 @@ export default function AgentProfilePage() {
     )
   }
 
-  const mdrtGoal  = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
-  const ytdFyp    = getAgentYtdFyp(agent, CURRENT_MONTH_IDX)
+  const mdrtGoal    = targets?.mdrt_goal || MDRT_GOAL_DEFAULT
+  const ytdFyp      = getAgentYtdFyp(agent, CURRENT_MONTH_IDX)
   const advisorTier = getAdvisorTier(ytdFyp, mdrtGoal)
+  const aiaEmail    = generateAiaEmail(agent.name)
+  const licenseDate = formatLicenseDate(agent.appointmentDate)
 
   return (
     <div className="min-h-screen pb-4" style={{ backgroundColor: 'var(--surface,#F7F8FA)' }}>
 
-      {/* Hero */}
+      {/* ── Hero ── */}
       <div className="bg-white" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
         <div className="max-w-screen-xl mx-auto px-4 pt-5 pb-0">
+
           {/* Back */}
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 text-xs mb-4"
+            className="flex items-center gap-1.5 text-xs mb-5"
             style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -622,31 +805,43 @@ export default function AgentProfilePage() {
           </button>
 
           {/* Profile row */}
-          <div className="flex items-start gap-4 mb-4">
-            {/* Avatar with photo upload overlay */}
-            <div className="relative flex-shrink-0">
-              <AgentAvatar agentCode={agent.code} name={agent.name} size={64} tierKey={advisorTier.key} />
-              <PhotoUpload agentCode={agent.code} agentName={agent.name} onSuccess={() => {}} />
-            </div>
+          <div className="flex items-end gap-5 mb-5">
 
-            <div className="flex-1 min-w-0">
+            {/* Prominent circular avatar with upload button */}
+            <PhotoUpload agentCode={agent.code} agentName={agent.name} onSuccess={() => {}}>
+              <AgentAvatar
+                agentCode={agent.code}
+                name={agent.name}
+                size={96}
+                tierKey={advisorTier.key}
+                className="!rounded-full ring-4 ring-white shadow-md"
+              />
+            </PhotoUpload>
+
+            {/* Name + details */}
+            <div className="flex-1 min-w-0 pb-1">
+
+              {/* MDRT badge (top-right) */}
               <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div>
-                  <h1 className="text-lg font-extrabold leading-tight" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+                <div className="min-w-0">
+                  <h1 className="text-xl font-extrabold leading-tight truncate"
+                    style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
                     {agent.name}
                   </h1>
-                  <p className="text-[11px] mt-0.5" style={{ fontFamily: 'DM Mono, monospace', color: 'var(--char-60,#6B7180)' }}>
-                    {agent.code}
-                  </p>
+                  {aiaEmail && (
+                    <p className="text-[11px] mt-0.5 truncate"
+                      style={{ fontFamily: 'DM Mono, monospace', color: 'var(--char-60,#6B7180)' }}>
+                      {aiaEmail}
+                    </p>
+                  )}
                 </div>
-                {/* MDRT badge */}
                 {(advisorTier.key === 'mdrt_aspirant' || advisorTier.key === 'mdrt_achiever') && (
                   <span
-                    className="text-[10px] font-bold rounded-full px-2.5 py-1 flex-shrink-0"
+                    className="flex-shrink-0 text-[10px] font-bold rounded-full px-2.5 py-1"
                     style={{
                       fontFamily: 'AIA Everest',
                       backgroundColor: advisorTier.key === 'mdrt_achiever' ? 'var(--green-10,#EAF4EB)' : 'var(--amber-10,#FDF3E3)',
-                      color: advisorTier.key === 'mdrt_achiever' ? 'var(--green,#4E9A51)' : 'var(--amber,#C97B1A)',
+                      color:           advisorTier.key === 'mdrt_achiever' ? 'var(--green,#4E9A51)'    : 'var(--amber,#C97B1A)',
                       border: `1px solid ${advisorTier.key === 'mdrt_achiever' ? 'var(--green,#4E9A51)' : 'var(--amber,#C97B1A)'}`,
                     }}
                   >
@@ -662,7 +857,7 @@ export default function AgentProfilePage() {
                     style={{
                       fontFamily: 'AIA Everest',
                       backgroundColor: agent.segment === 'Seasoned' ? 'var(--blue-10,#E8F2F9)' : 'var(--red-10,#FAE8EE)',
-                      color: agent.segment === 'Seasoned' ? 'var(--blue,#1F78AD)' : '#D31145',
+                      color:           agent.segment === 'Seasoned' ? 'var(--blue,#1F78AD)'    : '#D31145',
                     }}>
                     {agent.segment}
                   </span>
@@ -697,9 +892,9 @@ export default function AgentProfilePage() {
                 onClick={() => setActiveTab(tab.key)}
                 className="px-4 py-2.5 text-xs whitespace-nowrap flex-shrink-0 transition-colors"
                 style={{
-                  fontFamily: 'AIA Everest',
-                  fontWeight: activeTab === tab.key ? 700 : 500,
-                  color: activeTab === tab.key ? '#D31145' : 'var(--char-60,#6B7180)',
+                  fontFamily:   'AIA Everest',
+                  fontWeight:   activeTab === tab.key ? 700 : 500,
+                  color:        activeTab === tab.key ? '#D31145' : 'var(--char-60,#6B7180)',
                   borderBottom: activeTab === tab.key ? '2px solid #D31145' : '2px solid transparent',
                 }}
               >
@@ -710,9 +905,35 @@ export default function AgentProfilePage() {
         </div>
       </div>
 
-      {/* Tab content */}
+      {/* ── About card (always visible) ── */}
+      <div className="max-w-screen-xl mx-auto px-4 pt-4">
+        <div className="bg-white rounded-xl px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2.5"
+          style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+          {[
+            { label: 'Agent Code',     value: agent.code },
+            { label: 'AIA Email',      value: aiaEmail },
+            { label: 'Licensed Since', value: licenseDate },
+            { label: 'Unit',           value: agent.unitName || agent.unit || null },
+            { label: 'Area',           value: agent.area || null },
+            { label: 'Segment',        value: agent.segment || null },
+          ].filter(r => r.value).map(({ label, value }) => (
+            <div key={label}>
+              <p className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
+                style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
+                {label}
+              </p>
+              <p className="text-xs font-semibold break-all"
+                style={{ fontFamily: label === 'AIA Email' || label === 'Agent Code' ? 'DM Mono, monospace' : 'AIA Everest', color: '#1C1C28' }}>
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tab content ── */}
       <div className="max-w-screen-xl mx-auto px-4 py-5">
-        {activeTab === 'performance'    && <PerformanceTab agent={agent} agents={agents} targets={targets} />}
+        {activeTab === 'performance'    && <PerformanceTab agent={agent} agents={agents} targets={targets} historicalData={historicalData} />}
         {activeTab === 'bonus'          && <BonusTab agent={agent} />}
         {activeTab === 'qualifications' && <QualificationsTab agent={agent} targets={targets} />}
         {activeTab === 'team'           && <TeamImpactTab agent={agent} agents={agents} />}

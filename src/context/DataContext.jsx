@@ -18,8 +18,11 @@ export function DataProvider({ children }) {
   const [targets,        setTargets]        = useState(null)
   const [targetsLoading, setTargetsLoading] = useState(false)
 
-  // Historical data state (prior year's parsed data)
-  const [historicalData, setHistoricalData] = useState(null)
+  // Historical data state
+  const [historicalData,    setHistoricalData]    = useState(null)  // most recent prior year (for agent profile YoY)
+  const [allHistoricalData, setAllHistoricalData] = useState({})    // { [year]: parsedData } — all years
+  const [histUploading,     setHistUploading]     = useState(false)
+  const [histError,         setHistError]         = useState(null)
 
   // On mount: load from Supabase (single source of truth for all users)
   useEffect(() => {
@@ -43,6 +46,8 @@ export function DataProvider({ children }) {
         setIsLoading(false)
         // Chain targets load after main data resolves
         loadTargets()
+        // Load ALL available historical years (silently fails if table empty)
+        loadAllHistoricalData().catch(() => {})
       }
     }
 
@@ -94,7 +99,7 @@ export function DataProvider({ children }) {
   }
 
   // --------------------------------------------------------------------------
-  // loadHistoricalData: fetch a prior year's parsed data from agency_data_history
+  // loadHistoricalData: fetch a single prior year (kept for backward compat)
   // --------------------------------------------------------------------------
   async function loadHistoricalData(year) {
     const { data } = await supabase
@@ -104,6 +109,70 @@ export function DataProvider({ children }) {
       .single()
     if (data) setHistoricalData(data.data)
     return data
+  }
+
+  // --------------------------------------------------------------------------
+  // loadAllHistoricalData: fetch every uploaded prior year at once
+  // --------------------------------------------------------------------------
+  async function loadAllHistoricalData() {
+    const { data: rows } = await supabase
+      .from('agency_data_history')
+      .select('year, data')
+    if (!rows || rows.length === 0) return
+    const hist = {}
+    for (const row of rows) hist[row.year] = row.data
+    setAllHistoricalData(hist)
+    // Keep historicalData pointing at the most recent prior year (agent profile YoY)
+    const priorYearData = hist[CURRENT_YEAR - 1]
+    if (priorYearData) setHistoricalData(priorYearData)
+  }
+
+  // --------------------------------------------------------------------------
+  // uploadHistoricalData: parse an Excel file and explicitly save it as a
+  // prior-year snapshot (year passed explicitly by the caller).
+  // Does NOT overwrite the current year's data.
+  // --------------------------------------------------------------------------
+  async function uploadHistoricalData(arrayBuffer, year) {
+    setHistUploading(true)
+    setHistError(null)
+    try {
+      const result = await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try { resolve(parseExcelFile(arrayBuffer)) }
+          catch (err) { reject(err) }
+        }, 0)
+      })
+
+      if (year === CURRENT_YEAR) {
+        // Current year → overwrite main agency_data (same as Upload page)
+        const { error: saveError } = await supabase
+          .from('agency_data')
+          .upsert({ id: 1, data: result, uploaded_at: new Date().toISOString() })
+        if (saveError) throw new Error('Upload failed: ' + saveError.message)
+        setData(result)
+      } else {
+        // Prior year → upsert into agency_data_history (overwrites same year)
+        const { error: saveError } = await supabase
+          .from('agency_data_history')
+          .upsert(
+            { year, data: result, uploaded_at: new Date().toISOString() },
+            { onConflict: 'year' }
+          )
+        if (saveError) throw new Error('History upload failed: ' + saveError.message)
+        // Keep the most-recent-prior-year pointer for agent profile YoY
+        if (year === CURRENT_YEAR - 1) setHistoricalData(result)
+      }
+
+      // Update the all-years map regardless of which year
+      setAllHistoricalData(prev => ({ ...prev, [year]: result }))
+      return { success: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setHistError(msg)
+      throw err
+    } finally {
+      setHistUploading(false)
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -180,7 +249,12 @@ export function DataProvider({ children }) {
     saveTargets,
     // Historical data
     historicalData,
+    allHistoricalData,
     loadHistoricalData,
+    loadAllHistoricalData,
+    uploadHistoricalData,
+    histUploading,
+    histError,
   }
 
   return (

@@ -72,6 +72,28 @@ function buildColumnMap(sysNamesRow) {
   return map
 }
 
+/**
+ * Scan the system-column-name map (or a raw data row) for year-stamped column
+ * names like "FYC_PHP_202501", "ANP_JAN2025", "FYPI_JAN2025", "PERS_Q12025".
+ * Returns the 4-digit year found, or falls back to the current calendar year.
+ */
+function detectDataYear(columnMapOrRow) {
+  const CURRENT = new Date().getFullYear()
+  for (const name of Object.values(columnMapOrRow)) {
+    if (typeof name !== 'string') continue
+    // FYC_PHP_202501 → 2025
+    let m = name.match(/FYC_PHP_(\d{4})\d{2}/)
+    if (m) return Number(m[1])
+    // ANP_JAN2025, FYPI_JAN2025, OL_VUL_CS_CNT_JAN2025, PRODUCING_JAN2025, etc.
+    m = name.match(/[A-Z_]+_[A-Z]{3}(\d{4})$/)
+    if (m) { const y = Number(m[1]); if (y >= 2000 && y <= CURRENT + 1) return y }
+    // PERS_Q12025
+    m = name.match(/PERS_Q[1-4](\d{4})$/)
+    if (m) return Number(m[1])
+  }
+  return CURRENT
+}
+
 function rekeyRow(row, columnMap) {
   const out = {}
   for (const [displayKey, value] of Object.entries(row)) {
@@ -89,7 +111,7 @@ function rekeyRow(row, columnMap) {
 // Agent row parser (uses system column names)
 // ---------------------------------------------------------------------------
 
-function parseAgentRow(row) {
+function parseAgentRow(row, year) {
   const get = (key) => row[key]
   const getNum = (key) => num(row[key])
 
@@ -182,49 +204,50 @@ function parseAgentRow(row) {
 
   // --- Monthly FYC for trend charts
   const monthlyFyc = {}
-  const currentYear = new Date().getFullYear()
-  const MONTH_ABBRS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+  // NOTE: `year` is passed in — do NOT use new Date().getFullYear() here.
+  // For historical files (2024, 2023 etc.) the columns use that year's number.
+  const MONTH_ABBRS_LOCAL = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
   for (let i = 0; i < 12; i++) {
-    const key = `FYC_PHP_${currentYear}${String(i + 1).padStart(2, '0')}`
+    const key = `FYC_PHP_${year}${String(i + 1).padStart(2, '0')}`
     const val = getNum(key)
-    if (val > 0) monthlyFyc[MONTH_ABBRS[i]] = val
+    if (val > 0) monthlyFyc[MONTH_ABBRS_LOCAL[i]] = val
   }
 
   // --- Monthly ANP for trend charts
   const monthlyAnp = {}
   for (let i = 0; i < 12; i++) {
-    const key = `ANP_${MONTH_ABBRS[i]}${currentYear}`
+    const key = `ANP_${MONTH_ABBRS_LOCAL[i]}${year}`
     const val = getNum(key)
-    if (val > 0) monthlyAnp[MONTH_ABBRS[i]] = val
+    if (val > 0) monthlyAnp[MONTH_ABBRS_LOCAL[i]] = val
   }
 
   // --- Monthly data (all 12 months)
   const MONTH_NUMS = ['01','02','03','04','05','06','07','08','09','10','11','12']
   const monthly = {}
   for (let i = 0; i < 12; i++) {
-    const abbr = MONTH_ABBRS[i]   // e.g. 'JAN'
-    const num2 = MONTH_NUMS[i]    // e.g. '01'
+    const abbr = MONTH_ABBRS_LOCAL[i]  // e.g. 'JAN'
+    const num2 = MONTH_NUMS[i]         // e.g. '01'
     monthly[abbr] = {
-      fyc:        getNum(`FYC_PHP_${currentYear}${num2}`),
-      anp:        getNum(`ANP_${abbr}${currentYear}`),
-      fyp:        getNum(`FYPI_${abbr}${currentYear}`),
-      cases:      getNum(`OL_VUL_CS_CNT_${abbr}${currentYear}`),
-      producing:  num(get(`PRODUCING_${abbr}${currentYear}`)) === 1,
+      fyc:        getNum(`FYC_PHP_${year}${num2}`),
+      anp:        getNum(`ANP_${abbr}${year}`),
+      fyp:        getNum(`FYPI_${abbr}${year}`),
+      cases:      getNum(`OL_VUL_CS_CNT_${abbr}${year}`),
+      producing:  num(get(`PRODUCING_${abbr}${year}`)) === 1,
       persistency: (() => {
-        const raw = get(`PERS_${abbr}${currentYear}`)
+        const raw = get(`PERS_${abbr}${year}`)
         if (raw === '' || raw == null) return null
         const pct = Number(raw)
         return isNaN(pct) ? null : pct
       })(),
-      manpower:   getNum(`ManPowerCnt_${abbr}${currentYear}`),
-      isNewRecruit: num(get(`NEW_RECRUIT_${abbr}${currentYear}`)) === 1,
+      manpower:   getNum(`ManPowerCnt_${abbr}${year}`),
+      isNewRecruit: num(get(`NEW_RECRUIT_${abbr}${year}`)) === 1,
     }
   }
 
   // --- Quarterly persistency
   const quarterlyPers = {}
   for (let q = 1; q <= 4; q++) {
-    const raw = get(`PERS_Q${q}${currentYear}`)
+    const raw = get(`PERS_Q${q}${year}`)
     if (raw === '' || raw == null) {
       quarterlyPers[`Q${q}`] = null
     } else {
@@ -346,6 +369,106 @@ function buildUnits(agents) {
 }
 
 // ---------------------------------------------------------------------------
+// Parse the AGENCY sheet → array of { name, territory, region, monthly, anpMtd, anpYtd }
+// Combines rows that share the same AGENCY_NAME (different sectors of same agency).
+// ---------------------------------------------------------------------------
+
+function parseAgencySheet(ws, year) {
+  if (!ws) return []
+
+  // Try to find the structure: scan offsets 0,1,2,3,4 looking for the system-names row
+  let raws = []
+  let found = false
+  let detectedYear = year  // prefer caller-supplied year
+  for (const offset of [4, 3, 2, 1, 0]) {
+    const rows = XLSX.utils.sheet_to_json(ws, { range: offset, defval: '' })
+    if (!rows || rows.length < 4) continue
+    // System-names row contains a value like "AGENCY_NAME"
+    const sysIdx = rows.findIndex(r =>
+      Object.values(r).some(v => String(v).toUpperCase().replace(/[\s_]/g, '').includes('AGENCYNAME'))
+    )
+    if (sysIdx >= 0) {
+      const colMap = buildColumnMap(rows[sysIdx])
+      if (!year) detectedYear = detectDataYear(colMap)
+      raws = rows.slice(sysIdx + 1).map(row => rekeyRow(row, colMap))
+      found = true
+      break
+    }
+    // Fallback: AGENCY_NAME appears directly as a key (no system-names row)
+    if (rows[0] && (Object.keys(rows[0]).some(k => k.toUpperCase().replace(/[\s_]/g, '').includes('AGENCYNAME')))) {
+      if (!year) detectedYear = detectDataYear(rows[0])
+      raws = rows
+      found = true
+      break
+    }
+  }
+  if (!found || !raws.length) return []
+
+  const MONTH_NUMS = ['01','02','03','04','05','06','07','08','09','10','11','12']
+  const dataYear = detectedYear || new Date().getFullYear()
+
+  // Group by AGENCY_NAME (combine same agency across multiple sector rows)
+  const agencyMap = new Map()
+  for (const row of raws) {
+    const rawName = String(
+      row['AGENCY_NAME'] ?? row['AGENCY NAME'] ?? row['AgencyName'] ?? ''
+    ).trim()
+    if (!rawName) continue
+
+    if (!agencyMap.has(rawName)) {
+      const territory = String(
+        row['TERRITORY'] ?? row['TERR'] ?? row['TERRITORY_NAME'] ?? ''
+      ).trim()
+      const region = String(
+        row['REGION'] ?? row['REGION_NAME'] ?? ''
+      ).trim()
+      agencyMap.set(rawName, { name: rawName, territory, region, rows: [] })
+    }
+    agencyMap.get(rawName).rows.push(row)
+  }
+
+  // For each agency, aggregate metrics across all its rows
+  const agencies = []
+  for (const { name, territory, region, rows } of agencyMap.values()) {
+    const sumKey = key => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0)
+
+    // Monthly ANP (try several column-name patterns)
+    const monthly = {}
+    for (let i = 0; i < 12; i++) {
+      const abbr  = MONTH_ABBRS[i]
+      const num2  = MONTH_NUMS[i]
+      monthly[abbr] = {
+        // Try FYPI_JANXXXX, ANP_JANXXXX, FYP_PHPJANXXXX, etc.
+        fyp: sumKey(`FYPI_${abbr}${dataYear}`)
+          || sumKey(`FYP_${abbr}${dataYear}`)
+          || sumKey(`FYPI_${abbr}_${dataYear}`),
+        anp: sumKey(`ANP_${abbr}${dataYear}`)
+          || sumKey(`ANP_${abbr}_${dataYear}`),
+        fyc: sumKey(`FYC_PHP_${dataYear}${num2}`)
+          || sumKey(`FYC_${abbr}${dataYear}`),
+      }
+    }
+
+    // YTD totals — prefer explicit column, fallback to summing monthly
+    const anpYtd = sumKey('ANP_YTD')
+      || sumKey('ANP_YTD_TOTAL')
+      || MONTH_ABBRS.reduce((s, abbr) => s + (monthly[abbr].anp || 0), 0)
+    const anpMtd = sumKey('ANP_MTD')
+      || monthly[MONTH_ABBRS[new Date().getMonth()]].anp
+    const fypYtd = sumKey('FYP_YTD')
+      || sumKey('FYPI_YTD')
+      || MONTH_ABBRS.reduce((s, abbr) => s + (monthly[abbr].fyp || 0), 0)
+    const fypMtd = sumKey('FYP_MTD')
+      || sumKey('FYPI_MTD')
+      || monthly[MONTH_ABBRS[new Date().getMonth()]].fyp
+
+    agencies.push({ name, territory, region, monthly, anpYtd, anpMtd, fypYtd, fypMtd })
+  }
+
+  return agencies
+}
+
+// ---------------------------------------------------------------------------
 // Compute agency KPIs from agent data (more reliable than parsing AGENCY sheet)
 // ---------------------------------------------------------------------------
 
@@ -396,7 +519,12 @@ export function parseExcelFile(arrayBuffer) {
 
   // Build column mapping from system names row (row index 1)
   const sysNamesRow = agentRaws[1]
-  const columnMap = buildColumnMap(sysNamesRow)
+  const columnMap   = buildColumnMap(sysNamesRow)
+
+  // *** Detect the data year from the column names in THIS file ***
+  // e.g. "FYC_PHP_202501" → 2025;  "ANP_JAN2024" → 2024
+  // This is essential for historical uploads so monthly keys resolve correctly.
+  const dataYear = detectDataYear(columnMap)
 
   // Skip first 2 rows (empty + system names), re-key using system names
   const dataRows = agentRaws.slice(2).map(row => rekeyRow(row, columnMap))
@@ -410,7 +538,15 @@ export function parseExcelFile(arrayBuffer) {
   const filteredRows = dataRows.filter(isAmoraAgency)
   const sourceRows   = filteredRows.length > 0 ? filteredRows : dataRows
 
-  const agents = sourceRows.map(parseAgentRow)
+  // Pass the detected year so every agent's monthly data uses the correct column keys
+  const agents = sourceRows.map(row => parseAgentRow(row, dataYear))
+
+  // ---- AGENCY sheet (optional — for inter-agency rank comparison) ---------
+  const agencySheetName = sheetNames.find(n => n.toUpperCase() === 'AGENCY')
+                       || sheetNames.find(n => n.toUpperCase().includes('AGENC'))
+  const agencyRankData = agencySheetName
+    ? parseAgencySheet(workbook.Sheets[agencySheetName], dataYear)
+    : []
 
   // ---- Agency KPIs (computed from agent data) ----------------------------
   const agencyKpis = computeAgencyKpis(agents)
@@ -429,6 +565,7 @@ export function parseExcelFile(arrayBuffer) {
     agencyKpis,
     units,
     areas,
+    agencyRankData,      // [] if no Agency sheet; populated for inter-agency ranking
     uploadDate: new Date().toISOString(),
   }
 }

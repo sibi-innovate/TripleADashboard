@@ -5,6 +5,7 @@ import { formatCurrency } from '../utils/formatters'
 import { exportAgents } from '../utils/exportExcel'
 import Tag from '../components/Tag'
 import StatusIndicator from '../components/StatusIndicator'
+import AgentAvatar from '../components/AgentAvatar'
 import { CURRENT_MONTH_IDX } from '../constants'
 import { getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases, formatPeso } from '../utils/calculations'
 
@@ -93,8 +94,14 @@ export default function AgentsPage() {
   // Sort state — default ANP MTD descending
   // --------------------------------------------------
   const [sortKey, setSortKey] = useState('anpMtd')
-  // YTD sort keys mirror the computed ytd fields
-  const effectiveSortKey = ytdMode && sortKey === 'anpMtd' ? '_ytdFyp' : sortKey
+  // In YTD mode, numeric metric columns map to the pre-computed _ytd* fields
+  const effectiveSortKey = ytdMode
+    ? sortKey === 'anpMtd'     ? '_ytdFyp'
+    : sortKey === 'fycMtd'     ? '_ytdFyc'
+    : sortKey === 'casesTotal' ? '_ytdCases'
+    : sortKey === 'fypTotal'   ? '_ytdFyp'
+    : sortKey
+    : sortKey
   const [sortDir, setSortDir] = useState('desc')
 
   // --------------------------------------------------
@@ -153,10 +160,10 @@ export default function AgentsPage() {
   // Sorted list (memoised)
   // --------------------------------------------------
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered
+    if (!effectiveSortKey) return filtered
     return [...filtered].sort((a, b) => {
-      let av = a[sortKey]
-      let bv = b[sortKey]
+      let av = a[effectiveSortKey]
+      let bv = b[effectiveSortKey]
 
       // Booleans: true > false
       if (typeof av === 'boolean') av = av ? 1 : 0
@@ -174,7 +181,7 @@ export default function AgentsPage() {
       }
       return String(av).localeCompare(String(bv)) * dir
     })
-  }, [filtered, sortKey, sortDir])
+  }, [filtered, effectiveSortKey, sortDir])
 
   // Redirect if no data (after all hooks)
   if (!isLoaded) {
@@ -462,10 +469,13 @@ export default function AgentsPage() {
 
                         {/* Name — sticky */}
                         <td className="sticky left-0 z-10 px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap bg-white group-even:bg-gray-50 group-hover:bg-slate-50 border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                          {agent.code
-                            ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>
-                            : (agent.name ?? '—')
-                          }
+                          <div className="flex items-center gap-2">
+                            <AgentAvatar agentCode={agent.code} name={agent.name} size={28} className="!rounded-full flex-shrink-0" />
+                            {agent.code
+                              ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red hover:underline underline-offset-2 transition-colors">{agent.name ?? '—'}</Link>
+                              : (agent.name ?? '—')
+                            }
+                          </div>
                         </td>
 
                         {/* Code */}

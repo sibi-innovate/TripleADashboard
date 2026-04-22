@@ -261,32 +261,28 @@ export default function HistoricalPage() {
       const priorAgents   = allYearsMap[fromYear]?.agents ?? []
       const currentAgents = allYearsMap[toYear]?.agents   ?? []
 
-      // Prior year ending manpower (by code)
-      const priorManpowerCodes = new Set(
-        priorAgents.filter(a => a.manpowerInd && a.code).map(a => a.code)
-      )
-      // Current year ending manpower (by code)
-      const currentManpowerCodes = new Set(
-        currentAgents.filter(a => a.manpowerInd && a.code).map(a => a.code)
-      )
+      // Prior year ending manpower = ManpowerCnt=1 in prior year
+      const priorEnding = priorAgents.filter(a => a.manpowerInd).length
 
-      const endingManpower  = currentManpowerCodes.size
-      const newRecruits     = currentAgents.filter(a => a.isNewRecruitYtd).length
-      const startingManpower = endingManpower - newRecruits   // = retained from prior
+      // Current year values directly from columns
+      const endingManpower = currentAgents.filter(a => a.manpowerInd).length
+      const newRecruits    = currentAgents.filter(a => a.isNewRecruitYtd).length
 
-      // Attrited: had manpower in prior year, lost it by current year
-      const attrited = [...priorManpowerCodes].filter(c => !currentManpowerCodes.has(c)).length
-      const retained = priorManpowerCodes.size - attrited
-      const retentionRate = priorManpowerCodes.size > 0
-        ? (retained / priorManpowerCodes.size) * 100
+      // Arithmetic derivation — avoids cross-file agent-code matching which
+      // can drift if codes are inconsistent between years.
+      // retained  = ending − new recruits  (agents who carried over from prior year)
+      // attrited  = prior ending − retained (agents who left during the year)
+      const retained  = endingManpower - newRecruits
+      const attrited  = priorEnding - retained
+      const retentionRate = priorEnding > 0
+        ? (retained / priorEnding) * 100
         : 0
 
       results.push({
         fromYear, toYear,
-        priorEnding:    priorManpowerCodes.size,
+        priorEnding,
         newRecruits,
         endingManpower,
-        startingManpower,
         attrited,
         retained,
         retentionRate,

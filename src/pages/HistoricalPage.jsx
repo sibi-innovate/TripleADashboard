@@ -46,11 +46,71 @@ function buildYearStats(yearData, year) {
     .sort((a, b) => b.fyp - a.fyp)
     .slice(0, 10)
 
+  // ── Attrition analytics (requires manpowerTimeline field on each agent) ──────
+
+  // Monthly exit counts: how many agents' first blank month was each month
+  const attritionMonthCounts = MONTH_ABBRS.map((abbr, i) => ({
+    month: MONTH_SHORT[i],
+    value: agents.filter(a => a.manpowerTimeline?.exitMonthIdx === i).length,
+  }))
+
+  // New recruit cohort (agents with isNewRecruitYtd=1 who have monthly data)
+  const recruitCohort  = agents.filter(a => a.isNewRecruitYtd && a.manpowerTimeline != null)
+  const cohortLeft     = recruitCohort.filter(a => a.manpowerTimeline.isAttrited)
+  const cohortEndedYear = recruitCohort.filter(a => a.manpowerTimeline.lastActiveIdx === 11).length
+
+  // Average active months for recruits who left (from join to last active month, inclusive)
+  const cohortAvgTenure = cohortLeft.length > 0
+    ? +(cohortLeft.reduce((s, a) =>
+        s + (a.manpowerTimeline.lastActiveIdx - a.manpowerTimeline.joinMonthIdx + 1), 0
+      ) / cohortLeft.length).toFixed(1)
+    : null
+
+  // Cohort survival curve: of eligible recruits (those who had N months left in the year),
+  // what % were still active exactly N months after their join month?
+  const cohortSurvivalCurve = Array.from({ length: 12 }, (_, n) => {
+    const eligible = recruitCohort.filter(
+      a => a.manpowerTimeline.joinMonthIdx + n <= 11
+    )
+    if (eligible.length < 3) return null   // too few to be meaningful
+    const survived = eligible.filter(
+      a => a.manpowerTimeline.flags[a.manpowerTimeline.joinMonthIdx + n] === true
+    )
+    return {
+      monthsIn:  n + 1,
+      survived:  survived.length,
+      eligible:  eligible.length,
+      pct:       (survived.length / eligible.length) * 100,
+    }
+  }).filter(Boolean)
+
+  // Time-to-attrite buckets: months from join to last active month (for recruits who left)
+  const attritionGroups = [
+    { label: '1 mo',    check: m => m === 1 },
+    { label: '2–3 mo',  check: m => m >= 2 && m <= 3 },
+    { label: '4–6 mo',  check: m => m >= 4 && m <= 6 },
+    { label: '7+ mo',   check: m => m >= 7 },
+  ].map(({ label, check }) => ({
+    label,
+    count: cohortLeft.filter(a => {
+      const m = a.manpowerTimeline.lastActiveIdx - a.manpowerTimeline.joinMonthIdx + 1
+      return check(m)
+    }).length,
+  }))
+
   return {
     year, totalFyp, totalAnp, totalFyc, totalCases,
     headcount, rookies, seasoned, activeAgents, activityRate,
     monthlyFyp, monthlyAnp, monthlyFyc, monthlyCases,
     topFyp,
+    // Attrition analytics
+    attritionMonthCounts,
+    cohortTotal:       recruitCohort.length,
+    cohortLeft:        cohortLeft.length,
+    cohortEndedYear,
+    cohortAvgTenure,
+    cohortSurvivalCurve,
+    attritionGroups,
   }
 }
 
@@ -143,6 +203,70 @@ function SeasonalityChart({ yearStats, valueKey, format }) {
             {s.year}
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Attrition seasonality chart ─────────────────────────────────────────────
+// Shows which months agents exit, overlaid across years.
+
+function AttritionSeasonalityChart({ yearStats }) {
+  const YEAR_COLORS = ['#D31145', '#1F78AD', '#4E9A51', '#C97B1A', '#8B0A2F', '#0D4F7C', '#2C6E2F', '#8B5B0A']
+  const allVals = yearStats.flatMap(s => (s.attritionMonthCounts || []).map(m => m.value))
+  const max = Math.max(...allVals, 1)
+  const CHART_H = 80
+  const sorted = [...yearStats].sort((a, b) => a.year - b.year)
+
+  // Average per month across all years, for the callout
+  const avgByMonth = MONTH_SHORT.map((label, mi) => ({
+    label,
+    avg: yearStats.reduce((sum, s) => sum + (s.attritionMonthCounts?.[mi]?.value || 0), 0) / yearStats.length,
+  }))
+  const worstMonth = avgByMonth.reduce((a, b) => b.avg > a.avg ? b : a)
+  const bestMonth  = avgByMonth.reduce((a, b) => b.avg < a.avg ? b : a)
+
+  return (
+    <div>
+      <div className="flex items-end gap-0.5 overflow-hidden" style={{ height: CHART_H }}>
+        {MONTH_SHORT.map((label, mi) => (
+          <div key={mi} className="flex-1 flex flex-col items-center justify-end" style={{ height: CHART_H }}>
+            <div className="w-full flex flex-col-reverse items-center gap-0.5 overflow-hidden"
+              style={{ height: CHART_H - 14 }}>
+              {sorted.map((s, yi) => {
+                const val = s.attritionMonthCounts?.[mi]?.value || 0
+                const h = Math.max(val > 0 ? (val / max) * (CHART_H - 14) : 0, val > 0 ? 2 : 0)
+                return (
+                  <div
+                    key={s.year}
+                    title={`${s.year} ${label}: ${val} attrited`}
+                    className="w-full rounded-t-sm flex-shrink-0"
+                    style={{ height: h, backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length], opacity: 0.85 }}
+                  />
+                )
+              })}
+            </div>
+            <span className="text-[8px] font-medium text-gray-400">{label}</span>
+          </div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex gap-3 flex-wrap mt-3">
+        {sorted.map((s, yi) => {
+          const total = s.attritionMonthCounts?.reduce((t, m) => t + m.value, 0) || 0
+          return (
+            <span key={s.year} className="flex items-center gap-1 text-[10px] text-gray-600">
+              <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
+                style={{ backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length] }} />
+              {s.year} ({total} total)
+            </span>
+          )
+        })}
+      </div>
+      {/* Callout */}
+      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
+        <span>⚠️ <strong>Most departures:</strong> {worstMonth.label} (avg {worstMonth.avg.toFixed(1)}/yr)</span>
+        <span>✅ <strong>Fewest departures:</strong> {bestMonth.label} (avg {bestMonth.avg.toFixed(1)}/yr)</span>
       </div>
     </div>
   )
@@ -674,6 +798,190 @@ export default function HistoricalPage() {
             </div>
           </Card>
         </Section>
+
+        {/* ── 8. Attrition Deep-Dive ───────────────────────────────────────── */}
+        {yearStats.some(s => s.attritionMonthCounts?.some(m => m.value > 0)) && (
+          <Section
+            title="Attrition Deep-Dive"
+            subtitle="Monthly exit patterns, new recruit cohort survival, and time-to-attrite — historical years only"
+          >
+            <div className="flex flex-col gap-4">
+
+              {/* Card A — When agents exit */}
+              <Card>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">
+                  Monthly Attrition Pattern
+                </p>
+                <p className="text-[10px] text-gray-400 mb-4">
+                  Exit month = first blank after an agent's final active run — which months lose the most people
+                </p>
+                <AttritionSeasonalityChart yearStats={yearStats} />
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                {/* Card B — New recruit cohort survival */}
+                <Card>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">
+                    New Recruit Cohort Survival
+                  </p>
+                  <p className="text-[10px] text-gray-400 mb-4">
+                    Of each year's new recruits, how many were still active by December
+                  </p>
+
+                  {[...yearStats].sort((a, b) => a.year - b.year)
+                    .filter(s => s.cohortTotal > 0)
+                    .map(s => {
+                      const survPct = (s.cohortEndedYear / s.cohortTotal) * 100
+                      const attrPct = (s.cohortLeft     / s.cohortTotal) * 100
+                      return (
+                        <div key={s.year} className="mb-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-gray-700">{s.year} recruits</span>
+                            <span className="text-[10px] text-gray-400 tabular-nums"
+                              style={{ fontFamily: 'DM Mono, monospace' }}>
+                              {s.cohortTotal} total
+                            </span>
+                          </div>
+                          <div className="h-4 bg-gray-100 rounded overflow-hidden flex">
+                            <div className="h-full bg-[#4E9A51]" style={{ width: `${survPct}%` }}
+                              title={`Survived to Dec: ${s.cohortEndedYear}`} />
+                            <div className="h-full bg-[#D31145]" style={{ width: `${attrPct}%` }}
+                              title={`Left during year: ${s.cohortLeft}`} />
+                          </div>
+                          <div className="flex gap-3 mt-1 flex-wrap">
+                            <span className="text-[9px] font-semibold text-[#4E9A51]">
+                              {s.cohortEndedYear} survived ({survPct.toFixed(0)}%)
+                            </span>
+                            <span className="text-[9px] font-semibold text-[#D31145]">
+                              {s.cohortLeft} left ({attrPct.toFixed(0)}%)
+                            </span>
+                            {s.cohortAvgTenure && (
+                              <span className="text-[9px] text-gray-400">
+                                avg {s.cohortAvgTenure} mo before leaving
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
+
+                  {/* Survival curve — most recent year with enough data */}
+                  {(() => {
+                    const latest = [...yearStats]
+                      .sort((a, b) => b.year - a.year)
+                      .find(s => s.cohortSurvivalCurve?.length > 0)
+                    if (!latest) return null
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">
+                          {latest.year} survival curve
+                          <span className="font-normal text-gray-400 ml-1 normal-case">
+                            (% still active N months after joining)
+                          </span>
+                        </p>
+                        {latest.cohortSurvivalCurve.map(pt => (
+                          <div key={pt.monthsIn} className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] text-gray-400 w-14 flex-shrink-0 text-right">
+                              mo {pt.monthsIn}
+                            </span>
+                            <div className="flex-1 h-3 bg-gray-100 rounded overflow-hidden">
+                              <div className="h-full rounded transition-all duration-500"
+                                style={{
+                                  width: `${pt.pct}%`,
+                                  backgroundColor: pt.pct >= 70 ? '#4E9A51' : pt.pct >= 50 ? '#C97B1A' : '#D31145',
+                                }} />
+                            </div>
+                            <span className="text-[10px] font-bold tabular-nums w-10 text-right"
+                              style={{
+                                fontFamily: 'DM Mono, monospace',
+                                color: pt.pct >= 70 ? '#4E9A51' : pt.pct >= 50 ? '#C97B1A' : '#D31145',
+                              }}>
+                              {pt.pct.toFixed(0)}%
+                            </span>
+                            <span className="text-[9px] text-gray-400 w-14">
+                              {pt.survived}/{pt.eligible}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </Card>
+
+                {/* Card C — How long before leaving */}
+                <Card>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">
+                    How Long Before Leaving
+                  </p>
+                  <p className="text-[10px] text-gray-400 mb-4">
+                    For new recruits who left during the year — months from join to departure
+                  </p>
+
+                  {[...yearStats].sort((a, b) => a.year - b.year)
+                    .filter(s => s.cohortLeft > 0)
+                    .map(s => {
+                      const total = s.cohortLeft
+                      const GROUP_COLORS = ['#D31145', '#C97B1A', '#1F78AD', '#4E9A51']
+                      return (
+                        <div key={s.year} className="mb-5">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-gray-700">{s.year}</span>
+                            <span className="text-[10px] text-gray-400">{total} who left</span>
+                          </div>
+                          <div className="h-3 bg-gray-100 rounded overflow-hidden flex mb-2">
+                            {s.attritionGroups.map((g, gi) => {
+                              const pct = total > 0 ? (g.count / total) * 100 : 0
+                              return (
+                                <div key={g.label} className="h-full"
+                                  style={{ width: `${pct}%`, backgroundColor: GROUP_COLORS[gi] }}
+                                  title={`${g.label}: ${g.count} (${pct.toFixed(0)}%)`}
+                                />
+                              )
+                            })}
+                          </div>
+                          <div className="flex gap-3 flex-wrap">
+                            {s.attritionGroups.map((g, gi) => {
+                              const pct = total > 0 ? (g.count / total) * 100 : 0
+                              return (
+                                <span key={g.label}
+                                  className="flex items-center gap-1 text-[10px] font-semibold"
+                                  style={{ color: GROUP_COLORS[gi] }}>
+                                  <span className="inline-block w-2 h-2 rounded-sm flex-shrink-0"
+                                    style={{ backgroundColor: GROUP_COLORS[gi] }} />
+                                  {g.label}: {g.count} ({pct.toFixed(0)}%)
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
+
+                  {(() => {
+                    const totals = [0, 0, 0, 0]
+                    yearStats.forEach(s =>
+                      s.attritionGroups?.forEach((g, gi) => { totals[gi] += g.count })
+                    )
+                    const labels = ['1 mo', '2–3 mo', '4–6 mo', '7+ mo']
+                    const maxIdx = totals.indexOf(Math.max(...totals))
+                    if (totals[maxIdx] === 0) return null
+                    return (
+                      <div className="mt-2 pt-3 border-t border-gray-100 text-xs text-gray-600">
+                        ⚡ Most recruits who leave do so within{' '}
+                        <strong>{labels[maxIdx]}</strong> of joining
+                        <span className="text-gray-400"> ({totals[maxIdx]} across all years)</span>
+                      </div>
+                    )
+                  })()}
+                </Card>
+
+              </div>
+            </div>
+          </Section>
+        )}
 
       </div>
     </div>

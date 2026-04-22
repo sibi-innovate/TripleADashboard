@@ -249,6 +249,33 @@ function parseAgentRow(row, year) {
     }
   }
 
+  // --- Manpower timeline (built from monthly ManPowerCnt flags)
+  // Used by HistoricalPage for attrition analytics.
+  // Rules:
+  //   • joinMonth  = first month with manpower === 1
+  //   • exitMonth  = first month AFTER the last contiguous (or final) run of 1s
+  //   • Gap (1,"",1) = license lapse — NOT attrition; lastActiveIdx skips past gaps
+  //   • isAttrited = agent's last active month < December (they didn't make it to year-end)
+  const manpowerTimeline = (() => {
+    const flags = MONTH_ABBRS_LOCAL.map(abbr => monthly[abbr].manpower === 1)
+    const firstActive = flags.findIndex(v => v)
+    if (firstActive < 0) return null          // no monthly data at all
+    let lastActive = -1
+    for (let i = 11; i >= 0; i--) { if (flags[i]) { lastActive = i; break } }
+    const isAttrited = lastActive < 11
+    return {
+      flags,
+      joinMonthIdx:    firstActive,
+      joinMonth:       MONTH_ABBRS_LOCAL[firstActive],
+      lastActiveIdx:   lastActive,
+      lastActiveMonth: MONTH_ABBRS_LOCAL[lastActive],
+      exitMonthIdx:    isAttrited ? lastActive + 1 : null,
+      exitMonth:       isAttrited ? MONTH_ABBRS_LOCAL[lastActive + 1] : null,
+      isAttrited,
+      activeMonths:    flags.filter(Boolean).length,
+    }
+  })()
+
   // --- Quarterly persistency
   const quarterlyPers = {}
   for (let q = 1; q <= 4; q++) {
@@ -312,6 +339,7 @@ function parseAgentRow(row, year) {
     casesAh,
     manpowerInd,
     isNewRecruitYtd,
+    manpowerTimeline,
     isProducing,
     activityRatio,
     monthlyFyc,

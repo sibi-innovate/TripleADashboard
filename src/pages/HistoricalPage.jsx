@@ -48,31 +48,54 @@ function buildYearStats(yearData, year) {
 
   // ── Attrition analytics (requires manpowerTimeline field on each agent) ──────
 
-  // Monthly exit counts: how many agents' first blank month was each month
+  // Detect effective last month: last month where ANY agent has manpower=1.
+  // This prevents partial-year files (e.g. 2025 data through November) from
+  // marking every active agent as "attrited in December" just because Dec is blank.
+  let effectiveLastMonthIdx = 0
+  for (let i = 11; i >= 0; i--) {
+    if (agents.some(a => a.manpowerTimeline?.flags[i] === true)) {
+      effectiveLastMonthIdx = i
+      break
+    }
+  }
+  const isPartialYear = effectiveLastMonthIdx < 11
+
+  // Monthly exit counts — only exits that happened BEFORE the effective last month
+  // are real attrition; blanks at/after that month are just missing data.
   const attritionMonthCounts = MONTH_ABBRS.map((abbr, i) => ({
     month: MONTH_SHORT[i],
-    value: agents.filter(a => a.manpowerTimeline?.exitMonthIdx === i).length,
+    value: agents.filter(a =>
+      a.manpowerTimeline?.exitMonthIdx === i &&
+      a.manpowerTimeline.exitMonthIdx <= effectiveLastMonthIdx
+    ).length,
   }))
 
   // New recruit cohort (agents with isNewRecruitYtd=1 who have monthly data)
-  const recruitCohort  = agents.filter(a => a.isNewRecruitYtd && a.manpowerTimeline != null)
-  const cohortLeft     = recruitCohort.filter(a => a.manpowerTimeline.isAttrited)
-  const cohortEndedYear = recruitCohort.filter(a => a.manpowerTimeline.lastActiveIdx === 11).length
+  const recruitCohort = agents.filter(a => a.isNewRecruitYtd && a.manpowerTimeline != null)
 
-  // Average active months for recruits who left (from join to last active month, inclusive)
+  // Attrited = last active month is strictly before the effective last month
+  const cohortLeft = recruitCohort.filter(
+    a => a.manpowerTimeline.lastActiveIdx < effectiveLastMonthIdx
+  )
+  // Survived = still active in the effective last month
+  const cohortEndedYear = recruitCohort.filter(
+    a => a.manpowerTimeline.lastActiveIdx === effectiveLastMonthIdx
+  ).length
+
+  // Average active months for recruits who left (join → last active, inclusive)
   const cohortAvgTenure = cohortLeft.length > 0
     ? +(cohortLeft.reduce((s, a) =>
         s + (a.manpowerTimeline.lastActiveIdx - a.manpowerTimeline.joinMonthIdx + 1), 0
       ) / cohortLeft.length).toFixed(1)
     : null
 
-  // Cohort survival curve: of eligible recruits (those who had N months left in the year),
-  // what % were still active exactly N months after their join month?
-  const cohortSurvivalCurve = Array.from({ length: 12 }, (_, n) => {
+  // Cohort survival curve: % of eligible recruits still active N months after joining.
+  // "Eligible" = those whose join month + N is still within the effective last month.
+  const cohortSurvivalCurve = Array.from({ length: effectiveLastMonthIdx + 1 }, (_, n) => {
     const eligible = recruitCohort.filter(
-      a => a.manpowerTimeline.joinMonthIdx + n <= 11
+      a => a.manpowerTimeline.joinMonthIdx + n <= effectiveLastMonthIdx
     )
-    if (eligible.length < 3) return null   // too few to be meaningful
+    if (eligible.length < 3) return null
     const survived = eligible.filter(
       a => a.manpowerTimeline.flags[a.manpowerTimeline.joinMonthIdx + n] === true
     )
@@ -84,7 +107,7 @@ function buildYearStats(yearData, year) {
     }
   }).filter(Boolean)
 
-  // Time-to-attrite buckets: months from join to last active month (for recruits who left)
+  // Time-to-attrite buckets: months from join to last active (for recruits who left)
   const attritionGroups = [
     { label: '1 mo',    check: m => m === 1 },
     { label: '2–3 mo',  check: m => m >= 2 && m <= 3 },
@@ -111,6 +134,9 @@ function buildYearStats(yearData, year) {
     cohortAvgTenure,
     cohortSurvivalCurve,
     attritionGroups,
+    effectiveLastMonthIdx,
+    effectiveLastMonth:  MONTH_SHORT[effectiveLastMonthIdx],
+    isPartialYear,
   }
 }
 
@@ -258,7 +284,7 @@ function AttritionSeasonalityChart({ yearStats }) {
             <span key={s.year} className="flex items-center gap-1 text-[10px] text-gray-600">
               <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length] }} />
-              {s.year} ({total} total)
+              {s.year}{s.isPartialYear ? ` (thru ${s.effectiveLastMonth})` : ''} — {total} exits
             </span>
           )
         })}
@@ -837,7 +863,14 @@ export default function HistoricalPage() {
                       return (
                         <div key={s.year} className="mb-4">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-gray-700">{s.year} recruits</span>
+                            <span className="text-xs font-bold text-gray-700">
+                              {s.year} recruits
+                              {s.isPartialYear && (
+                                <span className="ml-1 text-[9px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                                  through {s.effectiveLastMonth}
+                                </span>
+                              )}
+                            </span>
                             <span className="text-[10px] text-gray-400 tabular-nums"
                               style={{ fontFamily: 'DM Mono, monospace' }}>
                               {s.cohortTotal} total
@@ -845,13 +878,13 @@ export default function HistoricalPage() {
                           </div>
                           <div className="h-4 bg-gray-100 rounded overflow-hidden flex">
                             <div className="h-full bg-[#4E9A51]" style={{ width: `${survPct}%` }}
-                              title={`Survived to Dec: ${s.cohortEndedYear}`} />
+                              title={`Active through ${s.effectiveLastMonth}: ${s.cohortEndedYear}`} />
                             <div className="h-full bg-[#D31145]" style={{ width: `${attrPct}%` }}
                               title={`Left during year: ${s.cohortLeft}`} />
                           </div>
                           <div className="flex gap-3 mt-1 flex-wrap">
                             <span className="text-[9px] font-semibold text-[#4E9A51]">
-                              {s.cohortEndedYear} survived ({survPct.toFixed(0)}%)
+                              {s.cohortEndedYear} active through {s.effectiveLastMonth} ({survPct.toFixed(0)}%)
                             </span>
                             <span className="text-[9px] font-semibold text-[#D31145]">
                               {s.cohortLeft} left ({attrPct.toFixed(0)}%)
@@ -878,7 +911,8 @@ export default function HistoricalPage() {
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">
                           {latest.year} survival curve
                           <span className="font-normal text-gray-400 ml-1 normal-case">
-                            (% still active N months after joining)
+                            (% still active N months after joining
+                            {latest.isPartialYear ? `, data through ${latest.effectiveLastMonth}` : ''})
                           </span>
                         </p>
                         {latest.cohortSurvivalCurve.map(pt => (
@@ -927,7 +961,14 @@ export default function HistoricalPage() {
                       return (
                         <div key={s.year} className="mb-5">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold text-gray-700">{s.year}</span>
+                            <span className="text-xs font-bold text-gray-700">
+                              {s.year}
+                              {s.isPartialYear && (
+                                <span className="ml-1 text-[9px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                                  through {s.effectiveLastMonth}
+                                </span>
+                              )}
+                            </span>
                             <span className="text-[10px] text-gray-400">{total} who left</span>
                           </div>
                           <div className="h-3 bg-gray-100 rounded overflow-hidden flex mb-2">

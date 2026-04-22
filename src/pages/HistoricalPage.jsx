@@ -241,21 +241,59 @@ export default function HistoricalPage() {
       .slice(0, 15)
   }, [yearStats])
 
-  // Agent retention: agents in prior year who appear in current year (by code)
+  // Agent retention: year-over-year, using ManpowerCnt and NEW_RECRUIT_YTD columns.
+  // For each consecutive year pair (e.g. 2024→2025):
+  //   - Prior ending manpower = agents with manpowerInd=true in prior year
+  //   - New recruits          = agents with isNewRecruitYtd=true in current year
+  //   - Ending manpower       = agents with manpowerInd=true in current year
+  //   - Starting manpower     = ending - new recruits (= agents carried over from prior)
+  //   - Attrited              = agents with manpowerInd=1 in prior year who have manpowerInd=0 in current year
+  //   - Retained              = prior ending - attrited
+  //   - Retention rate        = retained / prior ending × 100
   const retention = useMemo(() => {
-    if (yearStats.length < 2) return null
-    const currentAgents = new Set((allYearsMap[CURRENT_YEAR]?.agents ?? []).map(a => a.code).filter(Boolean))
+    if (yearKeys.length < 2) return null
+    const sortedYears = [...yearKeys].sort((a, b) => a - b)
     const results = []
-    for (const s of yearStats) {
-      if (s.year === CURRENT_YEAR) continue
-      const priorCodes = new Set((allYearsMap[s.year]?.agents ?? []).map(a => a.code).filter(Boolean))
-      const retained = [...priorCodes].filter(c => currentAgents.has(c)).length
-      const attrited = priorCodes.size - retained
-      const retentionRate = priorCodes.size > 0 ? (retained / priorCodes.size) * 100 : 0
-      results.push({ year: s.year, total: priorCodes.size, retained, attrited, retentionRate })
+
+    for (let i = 1; i < sortedYears.length; i++) {
+      const fromYear = sortedYears[i - 1]
+      const toYear   = sortedYears[i]
+      const priorAgents   = allYearsMap[fromYear]?.agents ?? []
+      const currentAgents = allYearsMap[toYear]?.agents   ?? []
+
+      // Prior year ending manpower (by code)
+      const priorManpowerCodes = new Set(
+        priorAgents.filter(a => a.manpowerInd && a.code).map(a => a.code)
+      )
+      // Current year ending manpower (by code)
+      const currentManpowerCodes = new Set(
+        currentAgents.filter(a => a.manpowerInd && a.code).map(a => a.code)
+      )
+
+      const endingManpower  = currentManpowerCodes.size
+      const newRecruits     = currentAgents.filter(a => a.isNewRecruitYtd).length
+      const startingManpower = endingManpower - newRecruits   // = retained from prior
+
+      // Attrited: had manpower in prior year, lost it by current year
+      const attrited = [...priorManpowerCodes].filter(c => !currentManpowerCodes.has(c)).length
+      const retained = priorManpowerCodes.size - attrited
+      const retentionRate = priorManpowerCodes.size > 0
+        ? (retained / priorManpowerCodes.size) * 100
+        : 0
+
+      results.push({
+        fromYear, toYear,
+        priorEnding:    priorManpowerCodes.size,
+        newRecruits,
+        endingManpower,
+        startingManpower,
+        attrited,
+        retained,
+        retentionRate,
+      })
     }
-    return results
-  }, [yearStats, allYearsMap])
+    return results.reverse() // most recent pair first
+  }, [yearKeys, allYearsMap])
 
   // Best month for each metric (most consistent high performers)
   const monthStrength = useMemo(() => {
@@ -522,43 +560,84 @@ export default function HistoricalPage() {
           </Section>
         )}
 
-        {/* ── 6. Agent Retention ───────────────────────────────────────────── */}
+        {/* ── 6. Agent Retention (year-over-year) ──────────────────────────── */}
         {retention && retention.length > 0 && (
           <Section
             title="Agent Retention"
-            subtitle={`How many agents from prior years are still active in ${CURRENT_YEAR}`}
+            subtitle="Year-over-year manpower movement — attrition tracked via ManpowerCnt, recruits via NEW_RECRUIT_YTD"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {retention.map(r => (
-                <Card key={r.year}>
+                <Card key={`${r.fromYear}-${r.toYear}`}>
+                  {/* Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">From {r.year}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        {r.fromYear} → {r.toYear}
+                      </p>
                       <p className="text-2xl font-black text-gray-800 mt-0.5"
                         style={{ fontFamily: 'DM Mono, monospace' }}>
-                        {formatPct(r.retentionRate, 0)}
+                        {formatPct(r.retentionRate)}
                       </p>
                       <p className="text-[10px] text-gray-400">retention rate</p>
                     </div>
-                    <div className={`text-2xl ${r.retentionRate >= 70 ? '🟢' : r.retentionRate >= 50 ? '🟡' : '🔴'}`} />
+                    <span className="text-xl">
+                      {r.retentionRate >= 70 ? '🟢' : r.retentionRate >= 50 ? '🟡' : '🔴'}
+                    </span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded overflow-hidden mb-3">
-                    <div className="h-full rounded" style={{
-                      width: `${r.retentionRate}%`,
+
+                  {/* Retention bar */}
+                  <div className="h-2 bg-gray-100 rounded overflow-hidden mb-4">
+                    <div className="h-full rounded transition-all duration-500" style={{
+                      width: `${Math.min(r.retentionRate, 100)}%`,
                       backgroundColor: r.retentionRate >= 70 ? '#4E9A51' : r.retentionRate >= 50 ? '#C97B1A' : '#D31145',
                     }} />
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    {[
-                      { label: 'Total', value: r.total, color: '#6B7180' },
-                      { label: 'Retained', value: r.retained, color: '#4E9A51' },
-                      { label: 'Attrited', value: r.attrited, color: '#D31145' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label}>
-                        <p className="text-[9px] font-bold uppercase text-gray-400">{label}</p>
-                        <p className="text-lg font-black" style={{ fontFamily: 'DM Mono, monospace', color }}>{value}</p>
-                      </div>
-                    ))}
+
+                  {/* Manpower funnel */}
+                  <div className="space-y-2 text-xs">
+                    {/* Starting row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full inline-block bg-gray-400" />
+                        Starting manpower
+                      </span>
+                      <span className="font-bold tabular-nums text-gray-700"
+                        style={{ fontFamily: 'DM Mono, monospace' }}>{r.priorEnding}</span>
+                    </div>
+                    {/* Attrition */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full inline-block bg-[#D31145]" />
+                        Attrited
+                      </span>
+                      <span className="font-bold tabular-nums text-[#D31145]"
+                        style={{ fontFamily: 'DM Mono, monospace' }}>−{r.attrited}</span>
+                    </div>
+                    {/* Retained */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full inline-block bg-[#4E9A51]" />
+                        Retained
+                      </span>
+                      <span className="font-bold tabular-nums text-[#4E9A51]"
+                        style={{ fontFamily: 'DM Mono, monospace' }}>{r.retained}</span>
+                    </div>
+                    {/* New recruits */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full inline-block bg-[#1F78AD]" />
+                        New recruits
+                      </span>
+                      <span className="font-bold tabular-nums text-[#1F78AD]"
+                        style={{ fontFamily: 'DM Mono, monospace' }}>+{r.newRecruits}</span>
+                    </div>
+                    {/* Divider + ending */}
+                    <div className="border-t border-gray-100 pt-2 flex items-center justify-between">
+                      <span className="font-semibold text-gray-600">Ending manpower</span>
+                      <span className="font-black tabular-nums text-gray-800"
+                        style={{ fontFamily: 'DM Mono, monospace' }}>{r.endingManpower}</span>
+                    </div>
                   </div>
                 </Card>
               ))}

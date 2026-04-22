@@ -209,9 +209,9 @@ function parseAgentRow(row, year) {
   const MONTH_ABBRS_LOCAL = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
 
   // --- New recruit YTD indicator
-  // Try the dedicated YTD column first; fall back to any monthly flag being set
+  // Only use the dedicated YTD column — monthly NEW_RECRUIT_* flags persist across
+  // an agent's entire first year so they must NOT be used for this count.
   const isNewRecruitYtd = Number(get('NEW_RECRUIT_YTD')) === 1
-    || MONTH_ABBRS_LOCAL.some(abbr => num(get(`NEW_RECRUIT_${abbr}${year}`)) === 1)
   for (let i = 0; i < 12; i++) {
     const key = `FYC_PHP_${year}${String(i + 1).padStart(2, '0')}`
     const val = getNum(key)

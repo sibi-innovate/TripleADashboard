@@ -141,23 +141,29 @@ export default function LeaderboardPage() {
 
   // ── TOTAL pools for rank context (all agents, no filter)
   const totalPools = useMemo(() => {
-    const sorted = [...monthData].filter(a => (a.m[metricKey] || 0) > 0)
+    // Rank is computed only among agents who have production (non-zero metric)
+    const sorted   = [...monthData].filter(a => (a.m[metricKey] || 0) > 0)
       .sort((a, b) => (b.m[metricKey] || 0) - (a.m[metricKey] || 0))
     const rookies  = sorted.filter(a => a.segment === 'Rookie')
     const seasoned = sorted.filter(a => a.segment === 'Seasoned')
-    // Build rank maps (by agent code)
     const overallRank  = new Map(sorted.map((a, i) => [a.code, i + 1]))
     const rookieRank   = new Map(rookies.map((a, i)  => [a.code, i + 1]))
     const seasonedRank = new Map(seasoned.map((a, i) => [a.code, i + 1]))
+
+    // Denominators use FULL agency headcount — "#1 of 150" not "#1 of 80 producers"
+    const all      = agents.length
+    const rookie   = agents.filter(a => a.segment === 'Rookie').length
+    const seasoned_ = agents.filter(a => a.segment === 'Seasoned').length
+
     return {
-      all:     sorted.length,
-      rookie:  rookies.length,
-      seasoned: seasoned.length,
+      all,
+      rookie,
+      seasoned: seasoned_,
       overallRank,
       rookieRank,
       seasonedRank,
     }
-  }, [monthData, metricKey])
+  }, [monthData, metricKey, agents])
 
   // ── Filtered + sorted top 30
   const top30 = useMemo(() => {

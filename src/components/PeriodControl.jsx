@@ -10,7 +10,9 @@ export default function PeriodControl({
   const { mode, monthIdx } = value;
 
   const handleModeToggle = (newMode) => {
-    onChange({ mode: newMode, monthIdx: newMode === 'ytd' ? 0 : monthIdx });
+    // Keep the current monthIdx when switching — YTD sums up to that month.
+    // Previously this reset to 0 (January), causing YTD to show only Jan data.
+    onChange({ mode: newMode, monthIdx });
   };
 
   const handleMonthClick = (idx) => {

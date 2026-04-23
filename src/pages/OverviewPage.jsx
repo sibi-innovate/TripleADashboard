@@ -514,10 +514,18 @@ export default function OverviewPage() {
     })
   }, [filteredAgents, trendMetric])
 
-  // Targets (monthly portion = annual / 12 as fallback)
-  const monthlyFypTarget  = targets?.fyp_annual  ? targets.fyp_annual / 12  : 0
-  const monthlyProdTarget = targets?.producing_monthly || 0
-  const monthlyCasesTarget = targets?.cases_annual ? targets.cases_annual / 12 : 0
+  // Targets — annual values and monthly slice (annual ÷ 12)
+  const annualFypTarget    = targets?.fyp_annual   || 0
+  const annualCasesTarget  = targets?.cases_annual || 0
+  const monthlyFypTarget   = annualFypTarget   ? annualFypTarget   / 12 : 0
+  const monthlyCasesTarget = annualCasesTarget ? annualCasesTarget / 12 : 0
+  const monthlyProdTarget  = targets?.producing_monthly || 0
+
+  // Active targets for the current period mode
+  const goalFypTarget   = mode === 'ytd' ? annualFypTarget   : monthlyFypTarget
+  const goalCasesTarget = mode === 'ytd' ? annualCasesTarget : monthlyCasesTarget
+  const goalProdTarget  = monthlyProdTarget   // same for both modes (it's a headcount, not cumulative)
+  const goalSectionTitle = mode === 'ytd' ? 'Annual Goals' : 'Monthly Goals'
 
   const uploadDateStr = data?.uploadDate
     ? new Date(data.uploadDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -578,25 +586,25 @@ export default function OverviewPage() {
         <AgencyRankCard data={data} targets={targets} period={period} />
 
         {/* 2. Goal Thermometers */}
-        {(monthlyFypTarget > 0 || monthlyProdTarget > 0 || monthlyCasesTarget > 0) && (
+        {(goalFypTarget > 0 || goalProdTarget > 0 || goalCasesTarget > 0) && (
           <section>
-            <SectionHeader title="Monthly Goals" />
+            <SectionHeader title={goalSectionTitle} />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
               <ThermometerCard
                 title="FYP vs Target"
                 actual={kpis.totalFyp}
-                target={monthlyFypTarget}
+                target={goalFypTarget}
               />
               <ThermometerCard
                 title="Producing Advisors"
                 actual={kpis.producing}
-                target={monthlyProdTarget}
+                target={goalProdTarget}
                 format="number"
               />
               <ThermometerCard
                 title="Cases vs Target"
                 actual={kpis.totalCases}
-                target={monthlyCasesTarget}
+                target={goalCasesTarget}
                 format="number"
               />
             </div>

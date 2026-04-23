@@ -399,7 +399,18 @@ export default function OverviewPage() {
     const totalAnp  = filteredAgents.reduce((s, a) => s + agentAnp(a, mode, monthIdx), 0)
     const totalFyc  = filteredAgents.reduce((s, a) => s + agentFyc(a, mode, monthIdx), 0)
     const totalCases = filteredAgents.reduce((s, a) => s + agentCases(a, mode, monthIdx), 0)
-    const producing = filteredAgents.filter(a => agentProducing(a, mode, monthIdx)).length
+    // YTD producing = average monthly producers (Jan through current month)
+    // Monthly producing = agents with at least one case this month
+    const producing = mode === 'ytd'
+      ? (() => {
+          let total = 0
+          for (let i = 0; i <= monthIdx; i++) {
+            const abbr = MONTH_ABBRS[i]
+            total += filteredAgents.filter(a => (a.monthly?.[abbr]?.cases || 0) > 0).length
+          }
+          return Math.round(total / (monthIdx + 1))
+        })()
+      : filteredAgents.filter(a => agentProducing(a, mode, monthIdx)).length
     const manpower  = filteredAgents.filter(a =>
       mode === 'ytd'
         ? getAgentYtdCases(a, monthIdx) > 0 || (a.manpowerInd ?? false)
@@ -596,7 +607,7 @@ export default function OverviewPage() {
                 target={goalFypTarget}
               />
               <ThermometerCard
-                title="Producing Advisors"
+                title={mode === 'ytd' ? 'Avg Producing / Month' : 'Producing Advisors'}
                 actual={kpis.producing}
                 target={goalProdTarget}
                 format="number"

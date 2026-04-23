@@ -115,36 +115,103 @@ function BirthdaysTab({ monthIdx }) {
   }
 
   const today = new Date();
+  const isCurrentMonth = monthIdx === today.getMonth();
+  const todayDay = today.getDate();
+
+  // Build card renderer
+  const renderCard = (a, isToday) => {
+    const d = new Date(a.birthDate);
+    return (
+      <div
+        key={a.code}
+        className="flex-shrink-0 w-36 rounded-xl p-4 text-center"
+        style={{
+          background: '#fff',
+          border: `2px solid ${isToday ? '#D31145' : 'var(--border, #E8E9ED)'}`,
+          boxShadow: isToday ? '0 0 0 3px rgba(211,17,69,0.12)' : 'none',
+        }}
+      >
+        <div className="mx-auto mb-2 w-12 h-12">
+          <AgentAvatar agentCode={a.code} name={a.name} size={48} className="!rounded-full" />
+        </div>
+        <p className="text-xs font-bold leading-snug" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{a.name}</p>
+        <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'DM Mono, monospace' }}>
+          {d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+        </p>
+        {isToday && (
+          <span className="mt-1.5 inline-block text-[9px] font-bold text-white bg-red-600 rounded px-1.5 py-0.5" style={{ fontFamily: 'AIA Everest' }}>
+            TODAY 🎂
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  if (!isCurrentMonth) {
+    // Non-current month: just sort by day ascending
+    const sorted = [...celebrants].sort((a, b) => new Date(a.birthDate).getDate() - new Date(b.birthDate).getDate());
+    return (
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {sorted.map(a => renderCard(a, false))}
+      </div>
+    );
+  }
+
+  // Current month: split into groups
+  const todayGroup    = celebrants.filter(a => new Date(a.birthDate).getDate() === todayDay);
+  const upcomingGroup = celebrants.filter(a => new Date(a.birthDate).getDate() > todayDay)
+                                  .sort((a, b) => new Date(a.birthDate).getDate() - new Date(b.birthDate).getDate());
+  const passedGroup   = celebrants.filter(a => new Date(a.birthDate).getDate() < todayDay)
+                                  .sort((a, b) => new Date(a.birthDate).getDate() - new Date(b.birthDate).getDate());
+
+  const SectionLabel = ({ label, color = '#6B7180' }) => (
+    <div className="flex-shrink-0 flex flex-col items-center justify-center pr-1">
+      <span
+        className="text-[9px] font-bold uppercase tracking-widest whitespace-nowrap"
+        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color, fontFamily: 'AIA Everest' }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+
+  const Divider = () => (
+    <div className="flex-shrink-0 w-px self-stretch bg-[#E8E9ED] mx-1" />
+  );
+
+  const hasMultipleGroups = [todayGroup, upcomingGroup, passedGroup].filter(g => g.length > 0).length > 1;
+
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
-      {celebrants.map(a => {
-        const d = new Date(a.birthDate);
-        const isToday = d.getDate() === today.getDate() && d.getMonth() === today.getMonth();
-        return (
-          <div
-            key={a.code}
-            className="flex-shrink-0 w-36 rounded-xl p-4 text-center"
-            style={{
-              background: '#fff',
-              border: `2px solid ${isToday ? '#D31145' : 'var(--border, #E8E9ED)'}`,
-              boxShadow: isToday ? '0 0 0 3px rgba(211,17,69,0.12)' : 'none',
-            }}
-          >
-            <div className="mx-auto mb-2 w-12 h-12">
-              <AgentAvatar agentCode={a.code} name={a.name} size={48} className="!rounded-full" />
-            </div>
-            <p className="text-xs font-bold leading-snug" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>{a.name}</p>
-            <p className="text-[10px] mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'DM Mono, monospace' }}>
-              {d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-            </p>
-            {isToday && (
-              <span className="mt-1.5 inline-block text-[9px] font-bold text-white bg-red-600 rounded px-1.5 py-0.5" style={{ fontFamily: 'AIA Everest' }}>
-                TODAY
-              </span>
-            )}
-          </div>
-        );
-      })}
+    <div className="flex gap-3 overflow-x-auto pb-2 items-start">
+      {/* Today */}
+      {todayGroup.length > 0 && (
+        <>
+          {hasMultipleGroups && <SectionLabel label="Today" color="#D31145" />}
+          {todayGroup.map(a => renderCard(a, true))}
+        </>
+      )}
+
+      {/* Divider between Today and Upcoming */}
+      {todayGroup.length > 0 && upcomingGroup.length > 0 && <Divider />}
+
+      {/* Upcoming */}
+      {upcomingGroup.length > 0 && (
+        <>
+          {hasMultipleGroups && <SectionLabel label="Upcoming" color="#1C1C28" />}
+          {upcomingGroup.map(a => renderCard(a, false))}
+        </>
+      )}
+
+      {/* Divider before Already Passed */}
+      {(todayGroup.length > 0 || upcomingGroup.length > 0) && passedGroup.length > 0 && <Divider />}
+
+      {/* Already Passed */}
+      {passedGroup.length > 0 && (
+        <>
+          {hasMultipleGroups && <SectionLabel label="Passed" color="#B0B3BC" />}
+          {passedGroup.map(a => renderCard(a, false))}
+        </>
+      )}
     </div>
   );
 }

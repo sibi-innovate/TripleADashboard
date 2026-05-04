@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { supabase } from '../lib/supabase';
-import { CURRENT_MONTH_IDX } from '../constants';
+import { CURRENT_MONTH_IDX, MONTH_LABELS } from '../constants';
 import { exportFullReport, exportRecognitionReport } from '../utils/exportExcel';
 
 // SVG icon set — AIA Qi monoline style, 16×16 viewBox
@@ -102,6 +102,7 @@ export default function Navbar() {
   const location = useLocation();
   const { data, targets, recognitionMonthIdx, unitViewMode, setUnitViewMode, selectedUnitName, setSelectedUnitName } = useData();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [downloadMonthIdx, setDownloadMonthIdx] = useState(CURRENT_MONTH_IDX);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setIsAdmin(!!data?.user));
@@ -118,7 +119,7 @@ export default function Navbar() {
     if (location.pathname === '/recognition') {
       exportRecognitionReport({ agents: data.agents ?? [], monthIdx: recognitionMonthIdx });
     } else {
-      exportFullReport(data, targets, CURRENT_MONTH_IDX);
+      exportFullReport(data, targets, downloadMonthIdx);
     }
   };
 
@@ -206,16 +207,32 @@ export default function Navbar() {
               </div>
             )}
 
-            {/* Download Report button — only shown when data is loaded */}
+            {/* Download Report — month picker + button */}
             {data && (
-              <button
-                onClick={handleDownload}
-                className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150"
-                style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
-              >
-                {Icons.download}
-                Download Report
-              </button>
+              <div className="flex items-center gap-1">
+                {location.pathname !== '/recognition' && (
+                  <select
+                    value={downloadMonthIdx}
+                    onChange={e => setDownloadMonthIdx(Number(e.target.value))}
+                    className="text-xs rounded px-2 py-1.5 border border-white/70 text-white"
+                    style={{ fontFamily: 'AIA Everest', fontWeight: 500, backgroundColor: 'rgba(0,0,0,0.15)' }}
+                  >
+                    {MONTH_LABELS.slice(0, CURRENT_MONTH_IDX + 1).map((label, i) => (
+                      <option key={i} value={i} style={{ color: '#1C1C28', backgroundColor: '#fff' }}>
+                        {label.slice(0, 3)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150"
+                  style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
+                >
+                  {Icons.download}
+                  Download Report
+                </button>
+              </div>
             )}
             {/* Upload button */}
             <button

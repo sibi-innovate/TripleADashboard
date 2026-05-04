@@ -18,6 +18,20 @@ const TABS = [
   { key: 'new-advisors', label: 'New Advisors' },
   { key: 'awards',       label: 'Awards' },
   { key: 'highlights',   label: 'Highlights' },
+  { key: 'buddy-system', label: 'Buddy System' },
+];
+
+// Buddy pairs for the April challenge — matched by partial name (case-insensitive)
+const BUDDY_PAIRS = [
+  ['Rogelio Lu',        'Camille Llanera'],
+  ['Justine Galindo',   'Andrea Sevilla'],
+  ['Clarizza Ramos',    'Divine Ceballos'],
+  ['Jonalyn Hermocilla','Rochelle Tallorin'],
+  ['Joy Guerra',        'Justine Mari Bio'],
+  ['Faivel Inres',      'Michael Davis'],
+  ['Joemar Punzalan',   'Jervy Ocquiola'],
+  ['Christine Guiang',  'Jeanne Marie Sarigumba'],
+  ['Zivie Amora',       'Jose Luis Galay'],
 ];
 
 export default function RecognitionPage() {
@@ -85,6 +99,7 @@ export default function RecognitionPage() {
         {activeTab === 'new-advisors' && <NewAdvisorsTab monthIdx={monthIdx} />}
         {activeTab === 'awards'       && <AwardsTab monthIdx={monthIdx} />}
         {activeTab === 'highlights'   && <HighlightsTab monthIdx={monthIdx} />}
+        {activeTab === 'buddy-system' && <BuddySystemTab monthIdx={monthIdx} />}
       </div>
     </div>
   );
@@ -777,6 +792,121 @@ function HighlightsTab({ monthIdx }) {
         </div>
       </section>
 
+    </div>
+  );
+}
+
+// ─── Buddy System Tab ─────────────────────────────────────────────────────────
+
+function BuddySystemTab({ monthIdx }) {
+  const { activeAgents } = useData();
+  const abbr = MONTH_ABBRS[monthIdx];
+  const monthLabel = MONTH_LABELS[monthIdx];
+
+  // Find an agent by partial name match (case-insensitive, all words must appear)
+  function findAgent(buddyName) {
+    const words = buddyName.toLowerCase().split(/\s+/).filter(Boolean);
+    return activeAgents.find(a => {
+      const n = (a.name || '').toLowerCase();
+      return words.every(w => n.includes(w));
+    }) || null;
+  }
+
+  const pairs = BUDDY_PAIRS.map(([nameA, nameB]) => {
+    const agentA = findAgent(nameA);
+    const agentB = findAgent(nameB);
+    const activeA = !!(agentA?.monthly?.[abbr]?.producing);
+    const activeB = !!(agentB?.monthly?.[abbr]?.producing);
+    return { nameA, nameB, agentA, agentB, activeA, activeB };
+  });
+
+  const bothCount = pairs.filter(p => p.activeA && p.activeB).length;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+            Buddy System Challenge
+          </h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
+            {monthLabel} · {bothCount} of {pairs.length} pairs both active
+          </p>
+        </div>
+        <div
+          className="text-xs font-bold px-3 py-1 rounded-full"
+          style={{
+            fontFamily: 'AIA Everest',
+            backgroundColor: bothCount === pairs.length ? '#E8F5E9' : '#FFF3E0',
+            color: bothCount === pairs.length ? '#2E7D32' : '#E65100',
+          }}
+        >
+          {bothCount}/{pairs.length} pairs complete
+        </div>
+      </div>
+
+      {/* Pairs grid */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {pairs.map(({ nameA, nameB, agentA, agentB, activeA, activeB }, i) => {
+          const bothActive = activeA && activeB;
+          const noneActive = !activeA && !activeB;
+          return (
+            <div
+              key={i}
+              className="bg-white rounded-xl border shadow-sm overflow-hidden"
+              style={{
+                borderColor: bothActive ? '#C8E6C9' : noneActive ? '#FFCDD2' : '#FFE0B2',
+                borderLeftWidth: 3,
+                borderLeftColor: bothActive ? '#4CAF50' : noneActive ? '#D31145' : '#FF9800',
+              }}
+            >
+              {/* Pair number + status badge */}
+              <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#848A90' }}>
+                  Pair {i + 1}
+                </span>
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: bothActive ? '#E8F5E9' : noneActive ? '#FFEBEE' : '#FFF3E0',
+                    color: bothActive ? '#2E7D32' : noneActive ? '#C62828' : '#E65100',
+                  }}
+                >
+                  {bothActive ? 'Both Active ✓' : noneActive ? 'Neither Active' : 'One Active'}
+                </span>
+              </div>
+
+              {/* Members */}
+              <div className="px-4 pb-4 flex flex-col gap-2 mt-2">
+                {[{ name: nameA, agent: agentA, active: activeA }, { name: nameB, agent: agentB, active: activeB }].map(({ name, agent, active }, j) => (
+                  <div key={j} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+                        {agent ? agent.name : name}
+                      </p>
+                      {agent && (
+                        <p className="text-[10px] truncate" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
+                          {agent.unitName || '—'} · {agent.segment}
+                        </p>
+                      )}
+                      {!agent && (
+                        <p className="text-[10px]" style={{ color: '#E65100', fontFamily: 'AIA Everest' }}>Not found in data</p>
+                      )}
+                    </div>
+                    <div
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                      style={{ backgroundColor: active ? '#4CAF50' : '#D31145' }}
+                    >
+                      {active ? '✓' : '✗'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

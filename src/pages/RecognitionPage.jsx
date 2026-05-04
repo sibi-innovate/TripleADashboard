@@ -24,7 +24,7 @@ const TABS = [
 // Buddy pairs for the April challenge — matched by partial name (case-insensitive)
 const BUDDY_PAIRS = [
   ['Rogelio Lu',        'Camille Llanera'],
-  ['Justine Galindo',   'Andrea Sevilla'],
+  ['Justin Galindo',    'Andrea Sevilla'],
   ['Clarizza Ramos',    'Divine Ceballos'],
   ['Jonalyn Hermocilla','Rochelle Tallorin'],
   ['Joy Guerra',        'Justine Mari Bio'],

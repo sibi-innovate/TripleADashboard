@@ -798,12 +798,13 @@ function HighlightsTab({ monthIdx }) {
 
 // ─── Buddy System Tab ─────────────────────────────────────────────────────────
 
+const QUARTERLY_ABBRS = ['APR', 'MAY', 'JUN'];
+
 function BuddySystemTab({ monthIdx }) {
   const { activeAgents } = useData();
   const abbr = MONTH_ABBRS[monthIdx];
   const monthLabel = MONTH_LABELS[monthIdx];
 
-  // Find an agent by partial name match (case-insensitive, all words must appear)
   function findAgent(buddyName) {
     const words = buddyName.toLowerCase().split(/\s+/).filter(Boolean);
     return activeAgents.find(a => {
@@ -812,101 +813,172 @@ function BuddySystemTab({ monthIdx }) {
     }) || null;
   }
 
-  const pairs = BUDDY_PAIRS.map(([nameA, nameB]) => {
+  function qtyCases(agent) {
+    if (!agent) return 0;
+    return QUARTERLY_ABBRS.reduce((s, ab) => s + (agent.monthly?.[ab]?.cases || 0), 0);
+  }
+
+  const pairs = BUDDY_PAIRS.map(([nameA, nameB], idx) => {
     const agentA = findAgent(nameA);
     const agentB = findAgent(nameB);
     const activeA = !!(agentA?.monthly?.[abbr]?.producing);
     const activeB = !!(agentB?.monthly?.[abbr]?.producing);
-    return { nameA, nameB, agentA, agentB, activeA, activeB };
+    const bothActive = activeA && activeB;
+    // Quarterly: both have ≥3 cases across Apr–Jun
+    const casesA = qtyCases(agentA);
+    const casesB = qtyCases(agentB);
+    const quarterlyQualified = casesA >= 3 && casesB >= 3;
+    return { pairNum: idx + 1, nameA, nameB, agentA, agentB, activeA, activeB, bothActive, casesA, casesB, quarterlyQualified };
   });
 
-  const bothCount = pairs.filter(p => p.activeA && p.activeB).length;
+  const activePairs  = pairs.filter(p => p.bothActive);
+  const otherPairs   = pairs.filter(p => !p.bothActive);
+  const monthlyWinners = activePairs.length;
+  const quarterlyWinners = pairs.filter(p => p.quarterlyQualified).length;
+
+  const PairCard = ({ p }) => {
+    const { pairNum, nameA, nameB, agentA, agentB, activeA, activeB, bothActive, casesA, casesB, quarterlyQualified } = p;
+    const noneActive = !activeA && !activeB;
+    return (
+      <div
+        className="rounded-xl border shadow-sm overflow-hidden"
+        style={{
+          backgroundColor: bothActive ? '#F1FBF3' : '#fff',
+          borderColor: bothActive ? '#A5D6A7' : noneActive ? '#FFCDD2' : '#FFE0B2',
+          borderLeftWidth: 4,
+          borderLeftColor: bothActive ? '#2E7D32' : noneActive ? '#D31145' : '#FF9800',
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: bothActive ? '#2E7D32' : '#848A90' }}>
+            Pair {pairNum}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {bothActive && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#C8E6C9', color: '#1B5E20' }}>
+                🍚 5 kg rice each
+              </span>
+            )}
+            {quarterlyQualified && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E3F2FD', color: '#0D47A1' }}>
+                🏆 +10 kg quarterly
+              </span>
+            )}
+            {!bothActive && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: noneActive ? '#FFEBEE' : '#FFF3E0',
+                  color: noneActive ? '#C62828' : '#E65100',
+                }}
+              >
+                {noneActive ? 'Neither Active' : 'One Active'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Members */}
+        <div className="px-4 pb-3 flex flex-col gap-2">
+          {[
+            { name: nameA, agent: agentA, active: activeA, cases: casesA },
+            { name: nameB, agent: agentB, active: activeB, cases: casesB },
+          ].map(({ name, agent, active, cases }, j) => (
+            <div key={j} className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+                  {agent ? agent.name : name}
+                </p>
+                {agent ? (
+                  <p className="text-[10px] truncate" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
+                    {agent.unitName || '—'} · {agent.segment} · Q cases: {cases}
+                  </p>
+                ) : (
+                  <p className="text-[10px]" style={{ color: '#E65100', fontFamily: 'AIA Everest' }}>Not found in data</p>
+                )}
+              </div>
+              <div
+                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: active ? '#2E7D32' : '#D31145' }}
+              >
+                {active ? '✓' : '✗'}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-base font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
             Buddy System Challenge
           </h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
-            {monthLabel} · {bothCount} of {pairs.length} pairs both active
+            {monthLabel} · April–June Quarter
           </p>
         </div>
-        <div
-          className="text-xs font-bold px-3 py-1 rounded-full"
-          style={{
-            fontFamily: 'AIA Everest',
-            backgroundColor: bothCount === pairs.length ? '#E8F5E9' : '#FFF3E0',
-            color: bothCount === pairs.length ? '#2E7D32' : '#E65100',
-          }}
-        >
-          {bothCount}/{pairs.length} pairs complete
+        <div className="flex gap-2 flex-wrap">
+          <div className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#E8F5E9', color: '#1B5E20', fontFamily: 'AIA Everest' }}>
+            🍚 Monthly: {monthlyWinners}/{pairs.length} pairs · 5 kg rice
+          </div>
+          <div className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#E3F2FD', color: '#0D47A1', fontFamily: 'AIA Everest' }}>
+            🏆 Quarterly: {quarterlyWinners}/{pairs.length} pairs · 10 kg rice
+          </div>
         </div>
       </div>
 
-      {/* Pairs grid */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {pairs.map(({ nameA, nameB, agentA, agentB, activeA, activeB }, i) => {
-          const bothActive = activeA && activeB;
-          const noneActive = !activeA && !activeB;
-          return (
-            <div
-              key={i}
-              className="bg-white rounded-xl border shadow-sm overflow-hidden"
-              style={{
-                borderColor: bothActive ? '#C8E6C9' : noneActive ? '#FFCDD2' : '#FFE0B2',
-                borderLeftWidth: 3,
-                borderLeftColor: bothActive ? '#4CAF50' : noneActive ? '#D31145' : '#FF9800',
-              }}
-            >
-              {/* Pair number + status badge */}
-              <div className="flex items-center justify-between px-4 pt-3 pb-1">
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#848A90' }}>
-                  Pair {i + 1}
-                </span>
-                <span
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: bothActive ? '#E8F5E9' : noneActive ? '#FFEBEE' : '#FFF3E0',
-                    color: bothActive ? '#2E7D32' : noneActive ? '#C62828' : '#E65100',
-                  }}
-                >
-                  {bothActive ? 'Both Active ✓' : noneActive ? 'Neither Active' : 'One Active'}
-                </span>
-              </div>
-
-              {/* Members */}
-              <div className="px-4 pb-4 flex flex-col gap-2 mt-2">
-                {[{ name: nameA, agent: agentA, active: activeA }, { name: nameB, agent: agentB, active: activeB }].map(({ name, agent, active }, j) => (
-                  <div key={j} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-                        {agent ? agent.name : name}
-                      </p>
-                      {agent && (
-                        <p className="text-[10px] truncate" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
-                          {agent.unitName || '—'} · {agent.segment}
-                        </p>
-                      )}
-                      {!agent && (
-                        <p className="text-[10px]" style={{ color: '#E65100', fontFamily: 'AIA Everest' }}>Not found in data</p>
-                      )}
-                    </div>
-                    <div
-                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                      style={{ backgroundColor: active ? '#4CAF50' : '#D31145' }}
-                    >
-                      {active ? '✓' : '✗'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      {/* Campaign rules */}
+      <div className="mb-6 rounded-xl border p-4 grid sm:grid-cols-2 gap-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Monthly Category</p>
+          <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both active in {monthLabel}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>🍚 5 kg of rice each</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Quarterly Category (Apr–Jun)</p>
+          <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both reach 3 cases total (Apr+May+Jun)</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>🏆 10 kg of rice each</p>
+        </div>
       </div>
+
+      {/* Active pairs section */}
+      {activePairs.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
+            <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#2E7D32', fontFamily: 'AIA Everest' }}>
+              ✓ Active Pairs — {activePairs.length}
+            </span>
+            <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {activePairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Other pairs section */}
+      {otherPairs.length > 0 && (
+        <div>
+          {activePairs.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+              <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
+                Other Pairs — {otherPairs.length}
+              </span>
+              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {otherPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

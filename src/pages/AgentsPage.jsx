@@ -76,7 +76,7 @@ function SortIcon({ col, sortKey, sortDir }) {
 // ---------------------------------------------------------------------------
 
 export default function AgentsPage() {
-  const { data, isLoaded } = useData()
+  const { data, isLoaded, activeAgents } = useData()
   const navigate = useNavigate()
 
   // --------------------------------------------------
@@ -113,14 +113,14 @@ export default function AgentsPage() {
   // Base agent list with moInactive computed
   // --------------------------------------------------
   const agents = useMemo(
-    () => (data?.agents ?? []).filter(a => a.manpowerInd).map(a => ({
+    () => activeAgents.filter(a => a.manpowerInd).map(a => ({
       ...a,
       moInactive: computeMonthsInactive(a),
       _ytdFyp:  getAgentYtdFyp(a, selectedMonthIdx),
       _ytdFyc:  getAgentYtdFyc(a, selectedMonthIdx),
       _ytdCases: getAgentYtdCases(a, selectedMonthIdx),
     })),
-    [data, selectedMonthIdx]
+    [activeAgents, selectedMonthIdx]
   )
 
   // --------------------------------------------------

@@ -174,7 +174,7 @@ const AREAS = ['All', 'SCM2 (Davao)', 'SCM3 (Gensan)']
 const SEGMENTS = ['All', 'Rookie', 'Seasoned']
 
 export default function QuarterlyBonusPage() {
-  const { data, isLoaded } = useData()
+  const { data, isLoaded, activeAgents } = useData()
 
   const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`
 
@@ -184,7 +184,7 @@ export default function QuarterlyBonusPage() {
   const [search,     setSearch]     = useState('')
   const [showOnly,   setShowOnly]   = useState('All')
 
-  const agents = (data?.agents ?? []).filter(a => a.manpowerInd)
+  const agents = activeAgents.filter(a => a.manpowerInd)
 
   const bonusRows = useMemo(() => {
     return agents

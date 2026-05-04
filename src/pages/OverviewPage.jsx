@@ -7,6 +7,7 @@ import ProgressBar from '../components/ProgressBar'
 import KpiCard from '../components/KpiCard'
 import MonthlyBarChart from '../components/MonthlyBarChart'
 import AgentAvatar from '../components/AgentAvatar'
+import SmartCurrency from '../components/SmartCurrency'
 import {
   MONTH_ABBRS, MONTH_LABELS, CURRENT_MONTH_IDX,
 } from '../constants'
@@ -65,7 +66,7 @@ function ThermometerCard({ title, actual, target, format = 'currency' }) {
       </p>
       <div className="flex items-end justify-between mb-2">
         <span className="text-lg font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
-          {fmt(actual)}
+          {format === 'currency' ? <SmartCurrency value={actual} /> : String(Math.round(actual))}
         </span>
         <span className="text-[10px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>
           / {fmt(target)} target
@@ -344,6 +345,11 @@ function MapaCard({ label, rookieVal, seasonedVal, format = 'number' }) {
     if (format === 'percent') return formatPct(v)
     return Math.round(v).toLocaleString()
   }
+  const renderVal = v => {
+    if (v === null || v === undefined || isNaN(v)) return '—'
+    if (format === 'currency') return <SmartCurrency value={v} />
+    return fmt(v)
+  }
   return (
     <div className="bg-white rounded-xl p-4" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
       <p className="text-[10px] font-semibold uppercase tracking-wide mb-3"
@@ -353,14 +359,14 @@ function MapaCard({ label, rookieVal, seasonedVal, format = 'number' }) {
           <p className="text-[9px] font-bold uppercase mb-0.5"
             style={{ fontFamily: 'AIA Everest', color: '#D31145' }}>Rookie</p>
           <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
-            {fmt(rookieVal)}
+            {renderVal(rookieVal)}
           </p>
         </div>
         <div>
           <p className="text-[9px] font-bold uppercase mb-0.5"
             style={{ fontFamily: 'AIA Everest', color: 'var(--blue,#1F78AD)' }}>Seasoned</p>
           <p className="text-base font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
-            {fmt(seasonedVal)}
+            {renderVal(seasonedVal)}
           </p>
         </div>
       </div>
@@ -372,7 +378,7 @@ function MapaCard({ label, rookieVal, seasonedVal, format = 'number' }) {
 
 export default function OverviewPage() {
   const navigate = useNavigate()
-  const { data, isLoaded, targets, loadTargets } = useData()
+  const { data, isLoaded, targets, loadTargets, activeAgents } = useData()
 
   const [period, setPeriod] = useState({ mode: 'monthly', monthIdx: CURRENT_MONTH_IDX })
   const [area, setArea] = useState('all')
@@ -387,11 +393,11 @@ export default function OverviewPage() {
 
   // All agents filtered by area + segment
   const filteredAgents = useMemo(() => {
-    let agents = data?.agents || []
+    let agents = activeAgents
     if (area !== 'all') agents = agents.filter(a => a.area?.startsWith(area))
     if (segmentFilter !== 'All') agents = agents.filter(a => a.segment === segmentFilter)
     return agents
-  }, [data, area, segmentFilter])
+  }, [activeAgents, area, segmentFilter])
 
   // Agency KPIs for selected period
   const kpis = useMemo(() => {
@@ -468,16 +474,15 @@ export default function OverviewPage() {
   // All agents not yet producing this month, ranked by propensity (for "To Activate")
   const allPropensityList = useMemo(() => {
     if (mode === 'ytd') return []
-    const allAgents = data?.agents || []
     const currentProducers = new Set(
       filteredAgents.filter(a => getMonthCases(a, monthIdx) > 0).map(a => a.code)
     )
     return filteredAgents
       .filter(a => !currentProducers.has(a.code))
-      .map(a => ({ agent: a, score: getPropensityScore(a, monthIdx, allAgents) }))
+      .map(a => ({ agent: a, score: getPropensityScore(a, monthIdx, activeAgents) }))
       .filter(x => x.score > 0)
       .sort((a, b) => b.score - a.score)
-  }, [filteredAgents, data, mode, monthIdx])
+  }, [filteredAgents, activeAgents, mode, monthIdx])
 
   // Top 4 shown on overview card (score >= 60)
   const propensityList = useMemo(() => allPropensityList.filter(x => x.score >= 60).slice(0, 4), [allPropensityList])
@@ -631,7 +636,7 @@ export default function OverviewPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
             <KpiCard
               title="ANP"
-              value={formatPeso(kpis.totalAnp)}
+              value={<SmartCurrency value={kpis.totalAnp} />}
               monospace
               trend={prevKpis ? {
                 value: trendDelta(kpis.totalAnp, prevKpis.anp),
@@ -640,7 +645,7 @@ export default function OverviewPage() {
             />
             <KpiCard
               title="FYC"
-              value={formatPeso(kpis.totalFyc)}
+              value={<SmartCurrency value={kpis.totalFyc} />}
               monospace
               trend={prevKpis ? {
                 value: trendDelta(kpis.totalFyc, prevKpis.fyc),
@@ -701,7 +706,7 @@ export default function OverviewPage() {
                   No high-propensity advisors found
                 </p>
               ) : propensityList.map(({ agent, score }) => (
-                <PropensityRow key={agent.code} agent={agent} score={score} monthIdx={monthIdx} allAgents={data?.agents || []} />
+                <PropensityRow key={agent.code} agent={agent} score={score} monthIdx={monthIdx} allAgents={activeAgents} />
               ))}
             </div>
           </section>
@@ -712,7 +717,7 @@ export default function OverviewPage() {
           <PropensityModal
             list={allPropensityList}
             monthIdx={monthIdx}
-            allAgents={data?.agents || []}
+            allAgents={activeAgents}
             onClose={() => setShowPropensityModal(false)}
           />
         )}

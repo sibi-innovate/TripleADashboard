@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo } from 'react'
 import { parseExcelFile } from '../utils/parseExcel'
 import { supabase } from '../lib/supabase'
-import { CURRENT_YEAR } from '../constants'
+import { CURRENT_YEAR, CURRENT_MONTH_IDX } from '../constants'
 
 const DataContext = createContext(null)
 
@@ -23,6 +23,25 @@ export function DataProvider({ children }) {
   const [allHistoricalData, setAllHistoricalData] = useState({})    // { [year]: parsedData } — all years
   const [histUploading,     setHistUploading]     = useState(false)
   const [histError,         setHistError]         = useState(null)
+
+  // Recognition / unit-view state
+  const [recognitionMonthIdx, setRecognitionMonthIdx] = useState(CURRENT_MONTH_IDX)
+  const [unitViewMode,        setUnitViewMode]        = useState('agency')
+  const [selectedUnitName,    setSelectedUnitName]    = useState(null)
+
+  const activeAgents = useMemo(() =>
+    unitViewMode === 'unit' && selectedUnitName
+      ? data?.agents?.filter(a => a.unitName === selectedUnitName) ?? []
+      : data?.agents ?? [],
+    [data, unitViewMode, selectedUnitName]
+  )
+
+  const activeUnits = useMemo(() =>
+    unitViewMode === 'unit' && selectedUnitName
+      ? data?.units?.filter(u => u.unitName === selectedUnitName) ?? []
+      : data?.units ?? [],
+    [data, unitViewMode, selectedUnitName]
+  )
 
   // On mount: load from Supabase (single source of truth for all users)
   useEffect(() => {
@@ -301,6 +320,14 @@ export function DataProvider({ children }) {
     uploadHistoricalData,
     histUploading,
     histError,
+    recognitionMonthIdx,
+    setRecognitionMonthIdx,
+    unitViewMode,
+    setUnitViewMode,
+    selectedUnitName,
+    setSelectedUnitName,
+    activeAgents,
+    activeUnits,
   }
 
   return (

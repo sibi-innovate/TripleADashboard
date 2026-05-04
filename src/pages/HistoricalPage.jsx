@@ -338,18 +338,18 @@ function Card({ children, className = '' }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function HistoricalPage() {
-  const { data, allHistoricalData, isLoaded } = useData()
+  const { data, allHistoricalData, isLoaded, activeAgents } = useData()
   const [metricKey, setMetricKey] = useState('totalFyp')
 
   // Compile all available years into one map { year: parsedData }
   const allYearsMap = useMemo(() => {
     const m = {}
-    if (data) m[CURRENT_YEAR] = data
+    if (data) m[CURRENT_YEAR] = { ...data, agents: activeAgents }
     for (const [yr, d] of Object.entries(allHistoricalData ?? {})) {
       m[Number(yr)] = d
     }
     return m
-  }, [data, allHistoricalData])
+  }, [data, activeAgents, allHistoricalData])
 
   const yearKeys = useMemo(() =>
     Object.keys(allYearsMap).map(Number).sort((a, b) => b - a),

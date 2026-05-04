@@ -4,6 +4,8 @@ import {
   getTopRookies, getTopOverall,
   getMostTrustedAdvisors, getMostProductiveAdvisors,
   getConsistentProducers,
+  getAgencyBuilders, getUnitAwards, getPathToMdrt,
+  getLeaderGamaProgress, getAgencyGamaStatus,
 } from './awardHelpers'
 
 function downloadWorkbook(wb, filename) {
@@ -515,4 +517,185 @@ export function exportFullReport(data, targets, monthIdx) {
   }
 
   downloadWorkbook(wb, `Amora-Dashboard-Report-${MONTH_ABBRS[monthIdx]}-${CURRENT_YEAR}.xlsx`)
+}
+
+// ─── Recognition Report export ────────────────────────────────────────────────
+
+export function exportRecognitionReport({ agents, monthIdx }) {
+  const licensed = agents.filter(a => a.manpowerInd)
+  const abbr = MONTH_ABBRS[monthIdx]
+  const wb = XLSX.utils.book_new()
+
+  // ── Sheet 1: Birthdays
+  const birthdayAgents = licensed.filter(
+    a => a.birthDate && new Date(a.birthDate).getMonth() === monthIdx
+  )
+  const birthdayRows = birthdayAgents.length > 0
+    ? birthdayAgents.map(a => ({
+        Name: a.name,
+        Unit: a.unitName || '—',
+        'Birth Date': a.birthDate,
+      }))
+    : [{ Note: 'No birthdays this month' }]
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(birthdayRows)), 'Birthdays')
+
+  // ── Sheet 2: New Advisors
+  const newAdvisors = licensed.filter(a => a.monthly?.[abbr]?.isNewRecruit === true)
+  const newAdvisorRows = newAdvisors.length > 0
+    ? newAdvisors.map(a => ({
+        Name: a.name,
+        Unit: a.unitName || '—',
+        'Activation Status': a.monthly?.[abbr]?.fastStart
+          ? 'Fast Start'
+          : a.isActivated
+            ? 'Activated'
+            : 'Not Yet Activated',
+      }))
+    : [{ Note: 'No new advisors this month' }]
+  XLSX.utils.book_append_sheet(wb, autoWidth(XLSX.utils.json_to_sheet(newAdvisorRows)), 'New Advisors')
+
+  // ── Sheet 3: Individual Awards
+  {
+    const rows = []
+
+    rows.push(['Top Rookies'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'Score', 'FYP', 'Cases', 'ANP'])
+    getTopRookies(licensed, abbr).forEach((r, i) =>
+      rows.push([i + 1, r.agent.name, r.agent.unitName || '—', Number(r.combinedScore.toFixed(4)), r.fyp, r.cases, r.anp])
+    )
+    rows.push([])
+
+    rows.push(['Top Overall'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'Score', 'FYP', 'Cases', 'ANP'])
+    getTopOverall(licensed, abbr).forEach((r, i) =>
+      rows.push([i + 1, r.agent.name, r.agent.unitName || '—', Number(r.combinedScore.toFixed(4)), r.fyp, r.cases, r.anp])
+    )
+    rows.push([])
+
+    rows.push(['Most Trusted Advisors (MTA — ≥2 Cases)'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'Cases', 'FYP', 'FYC'])
+    getMostTrustedAdvisors(licensed, abbr).forEach((r, i) =>
+      rows.push([i + 1, r.agent.name, r.agent.unitName || '—', r.cases, r.fyp, r.fyc])
+    )
+    rows.push([])
+
+    rows.push(['Most Productive Advisors (MPA — FYC > ₱20,000)'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'FYC', 'FYP', 'Cases'])
+    getMostProductiveAdvisors(licensed, abbr).forEach((r, i) =>
+      rows.push([i + 1, r.agent.name, r.agent.unitName || '—', r.fyc, r.fyp, r.cases])
+    )
+    rows.push([])
+
+    rows.push(['Consistent Producers (No Gaps Jan–Month)'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'Months Producing', 'Out of Months'])
+    getConsistentProducers(licensed, monthIdx, true).forEach((r, i) =>
+      rows.push([i + 1, r.agent.name, r.agent.unitName || '—', r.producingMonths, r.totalMonths])
+    )
+    rows.push([])
+
+    rows.push(['Agency Builders (Top Recruiters)'])
+    rows.push(['Rank', 'Recruiter', 'New Recruits', 'Recruit Names'])
+    getAgencyBuilders(licensed, abbr).forEach((r, i) =>
+      rows.push([i + 1, r.recruiterName, r.count, r.recruits.join(', ')])
+    )
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Individual Awards')
+  }
+
+  // ── Sheet 4: Unit Awards
+  {
+    const { topByFyp, topByRecruitment, topByProducing, topByCases } = getUnitAwards(licensed, abbr)
+    const rows = []
+
+    rows.push(['Unit FYP Award (Top 3)'])
+    rows.push(['Rank', 'Unit', 'FYP'])
+    topByFyp.forEach((u, i) => rows.push([i + 1, u.unitName, u.fyp]))
+    rows.push([])
+
+    rows.push(['Unit Recruitment Award'])
+    rows.push(['Rank', 'Unit', 'New Recruits'])
+    topByRecruitment.forEach((u, i) => rows.push([i + 1, u.unitName, u.newRecruits]))
+    rows.push([])
+
+    rows.push(['Unit Producing Award (Top 3)'])
+    rows.push(['Rank', 'Unit', 'Producing Advisors'])
+    topByProducing.forEach((u, i) => rows.push([i + 1, u.unitName, u.producing]))
+    rows.push([])
+
+    rows.push(['Unit Case Count Award (Top 3)'])
+    rows.push(['Rank', 'Unit', 'Cases'])
+    topByCases.forEach((u, i) => rows.push([i + 1, u.unitName, u.cases]))
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Unit Awards')
+  }
+
+  // ── Sheet 5: Highlights
+  {
+    const rows = []
+
+    // Agency GAMA Status
+    const { totalFyp, tier, nextTier, balance } = getAgencyGamaStatus(licensed, monthIdx)
+    rows.push(['Agency GAMA Status'])
+    rows.push(['Total YTD FYP', totalFyp])
+    rows.push(['Current Tier', tier.label])
+    rows.push(['Next Tier', nextTier?.label ?? 'Max Tier Achieved'])
+    rows.push(['Gap to Next Tier (PHP)', balance])
+    rows.push([])
+
+    // Ace Challenge — Top 15 by YTD FYC
+    const ytdAbbrs = MONTH_ABBRS.slice(0, monthIdx + 1)
+    const withYtd = licensed.map(a => ({
+      ...a,
+      ytdFyc:   ytdAbbrs.reduce((s, ab) => s + (a.monthly?.[ab]?.fyc   || 0), 0),
+      ytdFyp:   ytdAbbrs.reduce((s, ab) => s + (a.monthly?.[ab]?.fyp   || 0), 0),
+      ytdCases: ytdAbbrs.reduce((s, ab) => s + (a.monthly?.[ab]?.cases || 0), 0),
+    }))
+    const top15 = [...withYtd].sort((a, b) => b.ytdFyc - a.ytdFyc).slice(0, 15)
+
+    rows.push(['Ace Challenge — Top 15 (YTD FYC)'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'YTD FYC', 'YTD FYP', 'YTD Cases'])
+    top15.forEach((a, i) =>
+      rows.push([i + 1, a.name, a.unitName || '—', a.ytdFyc, a.ytdFyp, a.ytdCases])
+    )
+    rows.push([])
+
+    // Path to MDRT — Top 15
+    rows.push(['Path to MDRT — Top 15'])
+    rows.push(['Rank', 'Advisor', 'Unit', 'Tier', 'YTD FYP', '% of Goal', 'Balance to Next Tier (PHP)'])
+    getPathToMdrt(licensed, monthIdx).slice(0, 15).forEach((r, i) =>
+      rows.push([
+        i + 1,
+        r.agent.name,
+        r.agent.unitName || '—',
+        r.tier,
+        r.ytdFyp,
+        (r.pct * 100).toFixed(1) + '%',
+        r.balanceToNext,
+      ])
+    )
+    rows.push([])
+
+    // Leader GAMA Progress
+    rows.push(['Leader GAMA Progress'])
+    rows.push(['Unit', 'YTD FYP', 'Tier', 'Next Tier', 'Gap to Next (PHP)'])
+    getLeaderGamaProgress(licensed, monthIdx).forEach(r =>
+      rows.push([
+        r.unitName,
+        r.ytdFyp,
+        r.tier.label,
+        r.nextTier?.label ?? 'Max',
+        r.balance,
+      ])
+    )
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    autoWidth(ws)
+    XLSX.utils.book_append_sheet(wb, ws, 'Highlights')
+  }
+
+  downloadWorkbook(wb, `Amora-Recognition-${MONTH_LABELS[monthIdx]}-${CURRENT_YEAR}.xlsx`)
 }

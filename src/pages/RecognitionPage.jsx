@@ -1,6 +1,6 @@
 // RecognitionPage — Phase 6 implementation
 // Sub-tabs: Birthdays | New Advisors | Awards | Highlights
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { MONTH_LABELS, MONTH_ABBRS, CURRENT_MONTH_IDX, TIER_COLORS } from '../constants';
 import { formatCurrency } from '../utils/formatters';
@@ -21,8 +21,10 @@ const TABS = [
 ];
 
 export default function RecognitionPage() {
+  const { setRecognitionMonthIdx, activeAgents } = useData();
   const [activeTab, setActiveTab] = useState('highlights');
   const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX);
+  useEffect(() => { setRecognitionMonthIdx(monthIdx) }, [monthIdx])
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--surface, #F7F8FA)' }}>
@@ -91,8 +93,8 @@ export default function RecognitionPage() {
 // ─── Sub-tab components ──────────────────────────────────────────────────────
 
 function BirthdaysTab({ monthIdx }) {
-  const { data } = useData();
-  const agents = data?.agents || [];
+  const { activeAgents } = useData();
+  const agents = activeAgents;
 
   const hasBirthDateData = agents.some(a => a.birthDate);
   if (!hasBirthDateData) {
@@ -217,8 +219,8 @@ function BirthdaysTab({ monthIdx }) {
 }
 
 function NewAdvisorsTab({ monthIdx }) {
-  const { data } = useData();
-  const agents = data?.agents || [];
+  const { activeAgents } = useData();
+  const agents = activeAgents;
 
   // Only advisors whose NEW_RECRUIT_{MONTH}{YEAR} column = 1 for this month
   const abbr = MONTH_ABBRS[monthIdx];
@@ -277,8 +279,8 @@ const UNIT_AWARD_TABS = [
 ];
 
 function AwardsTab({ monthIdx }) {
-  const { data, targets } = useData();
-  const agents   = data?.agents || [];
+  const { targets, activeAgents } = useData();
+  const agents   = activeAgents;
   const mdrtGoal = targets?.mdrt_goal || 3518400;
   const abbr     = MONTH_ABBRS[monthIdx];
 
@@ -572,8 +574,8 @@ function UnitAwardList({ title, units, valueLabel, getValue }) {
 }
 
 function HighlightsTab({ monthIdx }) {
-  const { data, targets } = useData();
-  const agents   = data?.agents || [];
+  const { targets, activeAgents } = useData();
+  const agents   = activeAgents;
   const mdrtGoal = targets?.mdrt_goal || 3518400;
 
   if (agents.length === 0) {

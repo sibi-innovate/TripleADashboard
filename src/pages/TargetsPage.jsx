@@ -41,7 +41,7 @@ function getAchCell(actual, target, isFuture) {
 }
 
 export default function TargetsPage() {
-  const { data, isLoaded, targets, loadTargets, targetsLoading } = useData()
+  const { data, isLoaded, targets, loadTargets, targetsLoading, activeAgents } = useData()
   const currentMonthIdx = new Date().getMonth()
 
   const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX)
@@ -58,8 +58,8 @@ export default function TargetsPage() {
   const monthlyProdTarget = annualProd
 
   const agents = useMemo(() =>
-    (data?.agents ?? []).filter(a => a.manpowerInd),
-    [data]
+    activeAgents.filter(a => a.manpowerInd),
+    [activeAgents]
   )
 
   const monthlyActuals = useMemo(() =>

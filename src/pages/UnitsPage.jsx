@@ -144,7 +144,7 @@ function AgentsSubTable({ agents }) {
 // ---------------------------------------------------------------------------
 
 export default function UnitsPage() {
-  const { data, isLoaded } = useData()
+  const { data, isLoaded, activeUnits } = useData()
   const navigate = useNavigate()
 
   const [areaFilter, setAreaFilter] = useState('All')
@@ -152,7 +152,7 @@ export default function UnitsPage() {
   const [sortDir, setSortDir] = useState('desc')
   const [expandedRows, setExpandedRows] = useState(new Set())
 
-  const allUnits = data?.units ?? []
+  const allUnits = activeUnits
 
   // All hooks before any early return
   const units = useMemo(() => {

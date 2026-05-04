@@ -92,7 +92,7 @@ function RankBadge({ rank, totalAll, totalSegment, segment, segmentFilter }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function LeaderboardPage() {
-  const { data, isLoaded } = useData()
+  const { data, isLoaded, activeAgents } = useData()
 
   const [subTab,        setSubTab]        = useState('Advisors')
   const [selectedMonth, setSelectedMonth] = useState(MONTH_ABBRS[new Date().getMonth()])
@@ -104,7 +104,7 @@ export default function LeaderboardPage() {
   const [search,        setSearch]        = useState('')
   const [leaderSort,    setLeaderSort]    = useState('fyc')
 
-  const agents = data?.agents ?? []
+  const agents = activeAgents
 
   const unitOptions = useMemo(() => {
     const names = [...new Set(agents.map(a => a.unitName).filter(Boolean))].sort()

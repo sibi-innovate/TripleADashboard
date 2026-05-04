@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { supabase } from '../lib/supabase';
 import { CURRENT_MONTH_IDX } from '../constants';
-import { exportFullReport } from '../utils/exportExcel';
+import { exportFullReport, exportRecognitionReport } from '../utils/exportExcel';
 
 // SVG icon set — AIA Qi monoline style, 16×16 viewBox
 const Icons = {
@@ -100,7 +100,7 @@ function isTabActive(tab, pathname) {
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { data, targets } = useData();
+  const { data, targets, recognitionMonthIdx, unitViewMode, setUnitViewMode, selectedUnitName, setSelectedUnitName } = useData();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -111,6 +111,17 @@ export default function Navbar() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const unitNames = (data?.units ?? []).map(u => u.unitName).filter(Boolean).sort();
+  const navColor = unitViewMode === 'unit' ? '#1F78AD' : '#D31145';
+
+  const handleDownload = () => {
+    if (location.pathname === '/recognition') {
+      exportRecognitionReport({ agents: data.agents ?? [], monthIdx: recognitionMonthIdx });
+    } else {
+      exportFullReport(data, targets, CURRENT_MONTH_IDX);
+    }
+  };
+
   const handleUpload = () => navigate('/', { state: { intentUpload: true } });
 
   return (
@@ -118,7 +129,7 @@ export default function Navbar() {
       {/* Top bar */}
       <div
         className="w-full sticky top-0 z-50"
-        style={{ backgroundColor: '#D31145', boxShadow: '0 1px 0 rgba(0,0,0,0.12)' }}
+        style={{ backgroundColor: navColor, boxShadow: '0 1px 0 rgba(0,0,0,0.12)', transition: 'background-color 0.2s ease' }}
       >
         <div className="h-12 flex items-center justify-between px-4 max-w-screen-xl mx-auto">
           {/* Brand */}
@@ -147,10 +158,58 @@ export default function Navbar() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {data && (
+              <div className="flex items-center gap-1.5">
+                {/* Agency/Per Unit toggle */}
+                <div
+                  className="flex rounded overflow-hidden border border-white/40"
+                  style={{ fontFamily: 'AIA Everest', fontSize: '11px' }}
+                >
+                  <button
+                    onClick={() => { setUnitViewMode('agency'); setSelectedUnitName(null); }}
+                    className="px-2.5 py-1 transition-colors duration-150"
+                    style={{
+                      backgroundColor: unitViewMode === 'agency' ? 'rgba(255,255,255,0.25)' : 'transparent',
+                      color: '#fff',
+                      fontWeight: unitViewMode === 'agency' ? 700 : 500,
+                    }}
+                  >
+                    Agency
+                  </button>
+                  <button
+                    onClick={() => setUnitViewMode('unit')}
+                    className="px-2.5 py-1 transition-colors duration-150"
+                    style={{
+                      backgroundColor: unitViewMode === 'unit' ? 'rgba(255,255,255,0.25)' : 'transparent',
+                      color: '#fff',
+                      fontWeight: unitViewMode === 'unit' ? 700 : 500,
+                    }}
+                  >
+                    Per Unit
+                  </button>
+                </div>
+
+                {/* Unit selector — only shown in Per Unit mode */}
+                {unitViewMode === 'unit' && (
+                  <select
+                    value={selectedUnitName ?? ''}
+                    onChange={e => setSelectedUnitName(e.target.value || null)}
+                    className="text-xs rounded px-2 py-1 border border-white/40 bg-transparent text-white"
+                    style={{ fontFamily: 'AIA Everest', fontWeight: 500, maxWidth: 150, backgroundColor: 'rgba(0,0,0,0.15)' }}
+                  >
+                    <option value="" style={{ color: '#1C1C28', backgroundColor: '#fff' }}>Select unit…</option>
+                    {unitNames.map(n => (
+                      <option key={n} value={n} style={{ color: '#1C1C28', backgroundColor: '#fff' }}>{n}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
             {/* Download Report button — only shown when data is loaded */}
             {data && (
               <button
-                onClick={() => exportFullReport(data, targets, CURRENT_MONTH_IDX)}
+                onClick={handleDownload}
                 className="flex items-center gap-1.5 text-white text-xs border border-white/70 rounded px-3 py-1.5 hover:bg-white/10 transition-colors duration-150"
                 style={{ fontFamily: 'AIA Everest', fontWeight: 600 }}
               >
@@ -173,7 +232,7 @@ export default function Navbar() {
         {/* Tab bar — scrollable */}
         <div
           className="flex overflow-x-auto scrollbar-none"
-          style={{ backgroundColor: '#D31145', borderTop: '1px solid rgba(255,255,255,0.15)' }}
+          style={{ backgroundColor: navColor, borderTop: '1px solid rgba(255,255,255,0.15)', transition: 'background-color 0.2s ease' }}
         >
           <div className="flex min-w-max px-2">
             {TABS.map(tab => {

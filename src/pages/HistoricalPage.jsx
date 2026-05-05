@@ -348,6 +348,92 @@ function ForecastSummary({ avgMonthly, target30Monthly, target50Monthly, current
   )
 }
 
+// ─── Forecast Chart ───────────────────────────────────────────────────────────
+
+function ForecastChart({ chartData, priorStats, format }) {
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <LineChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+        <XAxis
+          dataKey="month"
+          tick={{ fontSize: 10, fill: '#9CA3AF' }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis hide />
+        <Tooltip
+          formatter={(v, name) => {
+            if (v == null) return null
+            const labels = {
+              avg:         'Historical Avg',
+              target30:    '+30% Target',
+              target50:    '+50% Target',
+              actual2026:  '2026 Actual',
+            }
+            return [format(v), labels[name] ?? name]
+          }}
+          contentStyle={{ fontSize: 11, borderRadius: 8 }}
+        />
+        {/* Prior year lines — faint context, no legend entry */}
+        {priorStats.map((s, i) => (
+          <Line
+            key={s.year}
+            type="monotone"
+            dataKey={String(s.year)}
+            stroke={YEAR_COLORS[i % YEAR_COLORS.length]}
+            strokeWidth={1}
+            strokeOpacity={0.35}
+            dot={false}
+            legendType="none"
+            isAnimationActive={false}
+          />
+        ))}
+        {/* Historical average — thick dashed gray */}
+        <Line
+          type="monotone"
+          dataKey="avg"
+          stroke="#9CA3AF"
+          strokeWidth={2}
+          strokeDasharray="5 3"
+          dot={false}
+          name="Historical Avg"
+        />
+        {/* +30% growth target — amber */}
+        <Line
+          type="monotone"
+          dataKey="target30"
+          stroke="#D97706"
+          strokeWidth={2}
+          dot={false}
+          name="+30% Target"
+        />
+        {/* +50% growth target — green */}
+        <Line
+          type="monotone"
+          dataKey="target50"
+          stroke="#059669"
+          strokeWidth={2}
+          dot={false}
+          name="+50% Target"
+        />
+        {/* 2026 actual — AIA red, stops at last month with data */}
+        <Line
+          type="monotone"
+          dataKey="actual2026"
+          stroke="#D31145"
+          strokeWidth={3}
+          dot={{ r: 4, fill: '#D31145', strokeWidth: 0 }}
+          activeDot={{ r: 6 }}
+          connectNulls={false}
+          name="2026 Actual"
+        />
+        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function HistoricalPage() {

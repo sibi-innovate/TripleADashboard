@@ -308,15 +308,16 @@ function Card({ children, className = '' }) {
 
 // ─── Summary Chip ─────────────────────────────────────────────────────────────
 
+const CHIP_COLORS = {
+  gray:  'bg-gray-50 text-gray-600 border-gray-200',
+  amber: 'bg-amber-50 text-amber-700 border-amber-200',
+  green: 'bg-green-50 text-green-700 border-green-200',
+  red:   'bg-red-50 text-red-600 border-red-200',
+}
+
 function SummaryChip({ label, value, color = 'gray' }) {
-  const colors = {
-    gray:  'bg-gray-50 text-gray-600 border-gray-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    red:   'bg-red-50 text-red-600 border-red-200',
-  }
   return (
-    <div className={`border rounded-lg px-3 py-2 ${colors[color] ?? colors.gray}`}>
+    <div className={`border rounded-lg px-3 py-2 ${CHIP_COLORS[color] ?? CHIP_COLORS.gray}`}>
       <div className="text-[10px] font-medium opacity-70 mb-0.5">{label}</div>
       <div className="font-bold text-sm tabular-nums" style={{ fontFamily: 'DM Mono, monospace' }}>{value}</div>
     </div>
@@ -333,12 +334,12 @@ function ForecastSummary({ avgMonthly, target30Monthly, target50Monthly, current
 
   return (
     <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100">
-      <SummaryChip label="Baseline avg / month" value={format(avgMonthly)} color="gray" />
-      <SummaryChip label="+30% target / month" value={format(target30Monthly)} color="amber" />
-      <SummaryChip label="+50% target / month" value={format(target50Monthly)} color="green" />
+      <SummaryChip label="Baseline avg / month" value={format(avgMonthly ?? 0)} color="gray" />
+      <SummaryChip label="+30% target / month" value={format(target30Monthly ?? 0)} color="amber" />
+      <SummaryChip label="+50% target / month" value={format(target50Monthly ?? 0)} color="green" />
       {currentPace != null && (
         <SummaryChip
-          label={`2026 pace · ${pct30?.toFixed(0)}% of +30% target`}
+          label={`${CURRENT_YEAR} pace · ${pct30 != null ? pct30.toFixed(0) : '—'}% of +30% target`}
           value={format(currentPace)}
           color={chipColor}
         />

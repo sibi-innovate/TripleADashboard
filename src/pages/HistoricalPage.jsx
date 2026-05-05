@@ -326,10 +326,8 @@ function SummaryChip({ label, value, color = 'gray' }) {
 
 // ─── Forecast Summary ─────────────────────────────────────────────────────────
 
-function ForecastSummary({ avgMonthly, target30Monthly, target50Monthly, currentPace, format }) {
-  const pct30 = currentPace != null && target30Monthly > 0
-    ? (currentPace / target30Monthly) * 100
-    : null
+function ForecastSummary({ avgMonthly, target30Monthly, target50Monthly, currentPace, currentPacePct30, format }) {
+  const pct30 = currentPacePct30
   const chipColor = pct30 == null ? 'gray' : pct30 >= 100 ? 'green' : pct30 >= 80 ? 'amber' : 'red'
 
   return (
@@ -611,11 +609,16 @@ export default function HistoricalPage() {
     const target50Monthly = avgPerMonth * 1.50
 
     const actualMonths = chartData.filter(d => d.actual2026 != null)
-    const currentPace  = actualMonths.length > 0
-      ? actualMonths.reduce((s, d) => s + d.actual2026, 0) / actualMonths.length
+    const ytdActual    = actualMonths.reduce((s, d) => s + d.actual2026, 0)
+    const ytdTarget30  = chartData
+      .slice(0, actualMonths.length)
+      .reduce((s, d) => s + d.target30, 0)
+    const currentPace  = actualMonths.length > 0 ? ytdActual : null
+    const currentPacePct30 = actualMonths.length > 0 && ytdTarget30 > 0
+      ? (ytdActual / ytdTarget30) * 100
       : null
 
-    return { chartData, priorStats, avgMonthly: avgPerMonth, target30Monthly, target50Monthly, currentPace }
+    return { chartData, priorStats, avgMonthly: avgPerMonth, target30Monthly, target50Monthly, currentPace, currentPacePct30 }
   }, [yearStats, metricKey])
 
   if (!isLoaded) return null
@@ -736,7 +739,7 @@ export default function HistoricalPage() {
         {/* ── 1b. 2026 Forecast & Growth Targets ───────────────────────────── */}
         {forecastData && (
           <Section
-            title="2026 Forecast & Growth Targets"
+            title={`${CURRENT_YEAR} Forecast & Growth Targets`}
             subtitle={`Month-on-month ${activeMeta.label} — historical pattern, this year's actual, and growth targets`}
           >
             <Card>
@@ -750,6 +753,7 @@ export default function HistoricalPage() {
                 target30Monthly={forecastData.target30Monthly}
                 target50Monthly={forecastData.target50Monthly}
                 currentPace={forecastData.currentPace}
+                currentPacePct30={forecastData.currentPacePct30}
                 format={activeMeta.format}
               />
               {forecastData.priorStats.length === 0 && (

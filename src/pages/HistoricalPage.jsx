@@ -565,6 +565,50 @@ export default function HistoricalPage() {
     })
   }, [yearStats, metricKey])
 
+  const forecastData = useMemo(() => {
+    const monthlyKey = metricKey === 'totalFyp' ? 'monthlyFyp'
+      : metricKey === 'totalAnp'   ? 'monthlyAnp'
+      : metricKey === 'totalFyc'   ? 'monthlyFyc'
+      : 'monthlyCases'
+
+    const priorStats   = yearStats.filter(s => s.year < CURRENT_YEAR)
+    const current2026  = yearStats.find(s => s.year === CURRENT_YEAR)
+
+    const chartData = MONTH_SHORT.map((month, mi) => {
+      const row = { month }
+
+      // One data key per prior year — used by ForecastChart for faint background lines
+      priorStats.forEach(s => {
+        row[String(s.year)] = s[monthlyKey]?.[mi]?.value ?? 0
+      })
+
+      // Average across prior years for this month (ignore zero months)
+      const vals = priorStats.map(s => s[monthlyKey]?.[mi]?.value ?? 0).filter(v => v > 0)
+      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+      row.avg      = avg
+      row.target30 = avg * 1.30
+      row.target50 = avg * 1.50
+
+      // 2026 actual — null for months with no data so the line doesn't drop to zero
+      const actual = current2026?.[monthlyKey]?.[mi]?.value ?? 0
+      row.actual2026 = actual > 0 ? actual : null
+
+      return row
+    })
+
+    // Summary stats
+    const avgPerMonth     = chartData.reduce((s, d) => s + (d.avg ?? 0), 0) / 12
+    const target30Monthly = avgPerMonth * 1.30
+    const target50Monthly = avgPerMonth * 1.50
+
+    const actualMonths = chartData.filter(d => d.actual2026 != null)
+    const currentPace  = actualMonths.length > 0
+      ? actualMonths.reduce((s, d) => s + d.actual2026, 0) / actualMonths.length
+      : null
+
+    return { chartData, priorStats, avgMonthly: avgPerMonth, target30Monthly, target50Monthly, currentPace }
+  }, [yearStats, metricKey])
+
   if (!isLoaded) return null
 
   if (yearStats.length === 0) {

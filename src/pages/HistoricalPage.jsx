@@ -566,6 +566,12 @@ export default function HistoricalPage() {
   }, [yearStats, metricKey])
 
   const forecastData = useMemo(() => {
+    // Headcount has no monthly production series — skip forecast for this metric
+    const SUPPORTED = ['totalFyp', 'totalAnp', 'totalFyc', 'totalCases']
+    if (!SUPPORTED.includes(metricKey)) {
+      return null
+    }
+
     const monthlyKey = metricKey === 'totalFyp' ? 'monthlyFyp'
       : metricKey === 'totalAnp'   ? 'monthlyAnp'
       : metricKey === 'totalFyc'   ? 'monthlyFyc'
@@ -596,8 +602,11 @@ export default function HistoricalPage() {
       return row
     })
 
-    // Summary stats
-    const avgPerMonth     = chartData.reduce((s, d) => s + (d.avg ?? 0), 0) / 12
+    // Summary stats — only count months where we actually have prior-year data
+    const nonZeroAvgMonths = chartData.filter(d => d.avg > 0)
+    const avgPerMonth = nonZeroAvgMonths.length > 0
+      ? nonZeroAvgMonths.reduce((s, d) => s + d.avg, 0) / nonZeroAvgMonths.length
+      : 0
     const target30Monthly = avgPerMonth * 1.30
     const target50Monthly = avgPerMonth * 1.50
 

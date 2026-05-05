@@ -2,6 +2,10 @@
 // Shows trends across all uploaded historical years + current year.
 
 import { useMemo, useState } from 'react'
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Cell,
+  ResponsiveContainer, CartesianGrid, Legend,
+} from 'recharts'
 import { useData } from '../context/DataContext'
 import { CURRENT_YEAR, MONTH_ABBRS, MONTH_SHORT } from '../constants'
 import { formatPeso, formatPct } from '../utils/calculations'
@@ -11,9 +15,13 @@ import { formatPeso, formatPct } from '../utils/calculations'
 function num(v) { const n = Number(v); return isNaN(n) ? 0 : n }
 
 /** Aggregate one year's parsed data into summary stats */
-function buildYearStats(yearData, year) {
+function buildYearStats(yearData, year, unitFilter = null) {
   if (!yearData?.agents) return null
-  const agents = yearData.agents
+  const allAgents = yearData.agents
+  const agents = unitFilter
+    ? allAgents.filter(a => a.unitName === unitFilter)
+    : allAgents
+  if (unitFilter && agents.length === 0) return { year, notFound: true }
 
   const totalFyp   = agents.reduce((s, a) => s + MONTH_ABBRS.reduce((ms, abbr) => ms + (a.monthly?.[abbr]?.fyp   || 0), 0), 0)
   const totalAnp   = agents.reduce((s, a) => s + MONTH_ABBRS.reduce((ms, abbr) => ms + (a.monthly?.[abbr]?.anp   || 0), 0), 0)
@@ -140,111 +148,92 @@ function buildYearStats(yearData, year) {
   }
 }
 
-// ─── Simple bar chart (multi-year comparison) ─────────────────────────────────
-// bars: [{ year, value }], sorted desc by year (newest first visually last)
+const YEAR_COLORS = ['#D31145', '#1F78AD', '#4E9A51', '#C97B1A', '#8B0A2F', '#0D4F7C', '#2C6E2F', '#8B5B0A']
+
+// ─── Year bar chart (Recharts horizontal) ────────────────────────────────────
 
 function YearBarChart({ stats, valueKey, label, format }) {
-  const max = Math.max(...stats.map(s => s[valueKey] || 0), 1)
-  const YEAR_COLORS = ['#D31145', '#1F78AD', '#4E9A51', '#C97B1A', '#8B0A2F', '#0D4F7C', '#2C6E2F', '#8B5B0A']
+  const sorted = [...stats].sort((a, b) => a.year - b.year)
+  const chartData = sorted.map((s, i) => ({
+    year: String(s.year),
+    value: s[valueKey] || 0,
+    fill: YEAR_COLORS[i % YEAR_COLORS.length],
+  }))
+  const barH = Math.max(sorted.length * 48, 100)
   return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3">{label}</p>
-      <div className="flex flex-col gap-2">
-        {[...stats].sort((a, b) => a.year - b.year).map((s, i) => {
-          const pct = Math.max((s[valueKey] / max) * 100, s[valueKey] > 0 ? 2 : 0)
-          return (
-            <div key={s.year} className="flex items-center gap-2">
-              <span className="text-[11px] font-bold w-10 flex-shrink-0 text-right tabular-nums"
-                style={{ color: YEAR_COLORS[i % YEAR_COLORS.length] }}>
-                {s.year}
-              </span>
-              <div className="flex-1 relative h-6 bg-gray-100 rounded overflow-hidden">
-                <div
-                  className="h-full rounded transition-all duration-500"
-                  style={{ width: `${pct}%`, backgroundColor: YEAR_COLORS[i % YEAR_COLORS.length] }}
-                />
-              </div>
-              <span className="text-[11px] font-bold tabular-nums w-28 text-right"
-                style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>
-                {format(s[valueKey] || 0)}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={barH}>
+      <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 110, left: 8, bottom: 4 }}>
+        <XAxis type="number" hide domain={[0, 'dataMax']} />
+        <YAxis type="category" dataKey="year" tick={{ fontSize: 12, fontWeight: 700, fill: '#374151' }} axisLine={false} tickLine={false} width={40} />
+        <Tooltip
+          formatter={v => [format(v), label]}
+          cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+        />
+        <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}
+          label={{ position: 'right', fontSize: 11, fontWeight: 700, formatter: format, fill: '#374151' }}>
+          {chartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
-// ─── Seasonality chart ────────────────────────────────────────────────────────
-// Shows each year's monthly pattern on the same Jan-Dec axis, overlaid.
+// ─── Seasonality chart (Recharts LineChart — one line per year) ───────────────
 
 function SeasonalityChart({ yearStats, valueKey, format }) {
-  const YEAR_COLORS = ['#D31145', '#1F78AD', '#4E9A51', '#C97B1A', '#8B0A2F', '#0D4F7C', '#2C6E2F', '#8B5B0A']
   const monthlyKey = valueKey === 'totalFyp' ? 'monthlyFyp'
     : valueKey === 'totalAnp' ? 'monthlyAnp'
     : valueKey === 'totalFyc' ? 'monthlyFyc'
     : 'monthlyCases'
 
-  const allValues = yearStats.flatMap(s => (s[monthlyKey] || []).map(m => m.value))
-  const max = Math.max(...allValues, 1)
+  const sorted = [...yearStats].sort((a, b) => a.year - b.year)
 
-  const CHART_H = 80
+  const chartData = MONTH_SHORT.map((month, mi) => {
+    const row = { month }
+    sorted.forEach(s => {
+      row[String(s.year)] = s[monthlyKey]?.[mi]?.value || 0
+    })
+    return row
+  })
 
   return (
-    <div>
-      {/* Chart */}
-      <div className="flex items-end gap-0.5 overflow-hidden" style={{ height: CHART_H }}>
-        {MONTH_ABBRS.map((abbr, mi) => (
-          <div key={abbr} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: CHART_H }}>
-            <div className="w-full flex flex-col-reverse items-center gap-0.5 overflow-hidden" style={{ height: CHART_H - 14 }}>
-              {[...yearStats].sort((a, b) => a.year - b.year).map((s, yi) => {
-                const val = s[monthlyKey]?.[mi]?.value || 0
-                const h = Math.max(val > 0 ? (val / max) * (CHART_H - 14) : 0, val > 0 ? 2 : 0)
-                return (
-                  <div
-                    key={s.year}
-                    title={`${s.year} ${abbr}: ${format(val)}`}
-                    className="w-full rounded-t-sm flex-shrink-0"
-                    style={{
-                      height: h,
-                      backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length],
-                      opacity: 0.85,
-                    }}
-                  />
-                )
-              })}
-            </div>
-            <span className="text-[8px] font-medium text-gray-400">{MONTH_SHORT[mi]}</span>
-          </div>
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+        <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+        <YAxis hide />
+        <Tooltip formatter={(v, name) => [format(v), name]} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+        {sorted.map((s, i) => (
+          <Line
+            key={s.year}
+            type="monotone"
+            dataKey={String(s.year)}
+            stroke={YEAR_COLORS[i % YEAR_COLORS.length]}
+            strokeWidth={2}
+            dot={{ r: 3, fill: YEAR_COLORS[i % YEAR_COLORS.length] }}
+            activeDot={{ r: 5 }}
+          />
         ))}
-      </div>
-
-      {/* Legend */}
-      <div className="flex gap-3 flex-wrap mt-3">
-        {[...yearStats].sort((a, b) => a.year - b.year).map((s, yi) => (
-          <span key={s.year} className="flex items-center gap-1 text-[10px] text-gray-600">
-            <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
-              style={{ backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length] }} />
-            {s.year}
-          </span>
-        ))}
-      </div>
-    </div>
+      </LineChart>
+    </ResponsiveContainer>
   )
 }
 
-// ─── Attrition seasonality chart ─────────────────────────────────────────────
-// Shows which months agents exit, overlaid across years.
+// ─── Attrition seasonality chart (Recharts grouped BarChart) ─────────────────
 
 function AttritionSeasonalityChart({ yearStats }) {
-  const YEAR_COLORS = ['#D31145', '#1F78AD', '#4E9A51', '#C97B1A', '#8B0A2F', '#0D4F7C', '#2C6E2F', '#8B5B0A']
-  const allVals = yearStats.flatMap(s => (s.attritionMonthCounts || []).map(m => m.value))
-  const max = Math.max(...allVals, 1)
-  const CHART_H = 80
   const sorted = [...yearStats].sort((a, b) => a.year - b.year)
 
-  // Average per month across all years, for the callout
+  const chartData = MONTH_SHORT.map((month, mi) => {
+    const row = { month }
+    sorted.forEach(s => {
+      row[String(s.year)] = s.attritionMonthCounts?.[mi]?.value || 0
+    })
+    return row
+  })
+
   const avgByMonth = MONTH_SHORT.map((label, mi) => ({
     label,
     avg: yearStats.reduce((sum, s) => sum + (s.attritionMonthCounts?.[mi]?.value || 0), 0) / yearStats.length,
@@ -254,43 +243,25 @@ function AttritionSeasonalityChart({ yearStats }) {
 
   return (
     <div>
-      <div className="flex items-end gap-0.5 overflow-hidden" style={{ height: CHART_H }}>
-        {MONTH_SHORT.map((label, mi) => (
-          <div key={mi} className="flex-1 flex flex-col items-center justify-end" style={{ height: CHART_H }}>
-            <div className="w-full flex flex-col-reverse items-center gap-0.5 overflow-hidden"
-              style={{ height: CHART_H - 14 }}>
-              {sorted.map((s, yi) => {
-                const val = s.attritionMonthCounts?.[mi]?.value || 0
-                const h = Math.max(val > 0 ? (val / max) * (CHART_H - 14) : 0, val > 0 ? 2 : 0)
-                return (
-                  <div
-                    key={s.year}
-                    title={`${s.year} ${label}: ${val} attrited`}
-                    className="w-full rounded-t-sm flex-shrink-0"
-                    style={{ height: h, backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length], opacity: 0.85 }}
-                  />
-                )
-              })}
-            </div>
-            <span className="text-[8px] font-medium text-gray-400">{label}</span>
-          </div>
-        ))}
-      </div>
-      {/* Legend */}
-      <div className="flex gap-3 flex-wrap mt-3">
-        {sorted.map((s, yi) => {
-          const total = s.attritionMonthCounts?.reduce((t, m) => t + m.value, 0) || 0
-          return (
-            <span key={s.year} className="flex items-center gap-1 text-[10px] text-gray-600">
-              <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
-                style={{ backgroundColor: YEAR_COLORS[yi % YEAR_COLORS.length] }} />
-              {s.year}{s.isPartialYear ? ` (thru ${s.effectiveLastMonth})` : ''} — {total} exits
-            </span>
-          )
-        })}
-      </div>
-      {/* Callout */}
-      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="20%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }}
+            formatter={(value, entry, i) => {
+              const s = sorted[i]
+              const total = s?.attritionMonthCounts?.reduce((t, m) => t + m.value, 0) || 0
+              return `${value}${s?.isPartialYear ? ` (thru ${s.effectiveLastMonth})` : ''} — ${total} exits`
+            }}
+          />
+          {sorted.map((s, i) => (
+            <Bar key={s.year} dataKey={String(s.year)} fill={YEAR_COLORS[i % YEAR_COLORS.length]} radius={[3, 3, 0, 0]} maxBarSize={14} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
         <span>⚠️ <strong>Most departures:</strong> {worstMonth.label} (avg {worstMonth.avg.toFixed(1)}/yr)</span>
         <span>✅ <strong>Fewest departures:</strong> {bestMonth.label} (avg {bestMonth.avg.toFixed(1)}/yr)</span>
       </div>
@@ -338,8 +309,10 @@ function Card({ children, className = '' }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function HistoricalPage() {
-  const { data, allHistoricalData, isLoaded, activeAgents } = useData()
+  const { data, allHistoricalData, isLoaded, activeAgents, unitViewMode, selectedUnitName } = useData()
   const [metricKey, setMetricKey] = useState('totalFyp')
+
+  const unitFilter = unitViewMode === 'unit' ? selectedUnitName : null
 
   // Compile all available years into one map { year: parsedData }
   const allYearsMap = useMemo(() => {
@@ -356,10 +329,16 @@ export default function HistoricalPage() {
     [allYearsMap]
   )
 
-  // Compute stats for every available year
+  // Compute stats for every available year — with optional unit filter
+  const allYearStats = useMemo(() =>
+    yearKeys.map(y => buildYearStats(allYearsMap[y], y, unitFilter)),
+    [allYearsMap, yearKeys, unitFilter]
+  )
+
+  // Stats without the notFound entries (used for charts/analytics)
   const yearStats = useMemo(() =>
-    yearKeys.map(y => buildYearStats(allYearsMap[y], y)).filter(Boolean),
-    [allYearsMap, yearKeys]
+    allYearStats.filter(s => s && !s.notFound),
+    [allYearStats]
   )
 
   const METRIC_OPTIONS = [
@@ -493,6 +472,12 @@ export default function HistoricalPage() {
               {yearStats.length} year{yearStats.length !== 1 ? 's' : ''} of data ·{' '}
               {yearStats.map(s => s.year).sort((a, b) => a - b).join(', ')}
             </p>
+            {unitFilter && (
+              <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-700 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                Showing history for: {unitFilter}
+              </div>
+            )}
           </div>
           {/* Metric selector */}
           <div className="flex gap-1 bg-white rounded-lg p-1 shadow-sm border border-gray-200">
@@ -514,8 +499,21 @@ export default function HistoricalPage() {
           subtitle="Full-year totals for each metric across all uploaded years"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {yearStats.map((s, i) => {
-              const prior = yearStats[i + 1]
+            {allYearStats.filter(Boolean).sort((a, b) => b.year - a.year).map((s, i) => {
+              if (s.notFound) {
+                return (
+                  <Card key={s.year} className="opacity-60 border-dashed">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl font-black text-gray-400" style={{ fontFamily: 'DM Mono, monospace' }}>{s.year}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 italic mt-2">
+                      "{unitFilter}" did not yet exist in {s.year}
+                    </p>
+                  </Card>
+                )
+              }
+              const yearStatsSorted = allYearStats.filter(x => x && !x.notFound).sort((a, b) => b.year - a.year)
+              const prior = yearStatsSorted[yearStatsSorted.findIndex(x => x.year === s.year) + 1]
               return (
                 <Card key={s.year}>
                   <div className="flex items-center justify-between mb-3">

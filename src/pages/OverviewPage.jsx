@@ -146,10 +146,9 @@ function getPropensityRemarks(agent, score, monthIdx, allAgents) {
   return remarks
 }
 
-function PropensityRow({ agent, score, monthIdx = CURRENT_MONTH_IDX, allAgents = [], compact = false }) {
+function PropensityRow({ agent, score, monthIdx = CURRENT_MONTH_IDX, allAgents = [] }) {
   const remarks = getPropensityRemarks(agent, score, monthIdx, allAgents)
   const scoreColor = score >= 80 ? '#D31145' : score >= 60 ? 'var(--amber,#C97B1A)' : 'var(--char-60,#6B7180)'
-
   return (
     <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid var(--border,#E8E9ED)' }}>
       <AgentAvatar agentCode={agent.code} name={agent.name} size={32} className="!rounded-full flex-shrink-0" />
@@ -160,10 +159,39 @@ function PropensityRow({ agent, score, monthIdx = CURRENT_MONTH_IDX, allAgents =
         </p>
       </div>
       <div className="flex-shrink-0 text-right">
-        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: scoreColor }}>
-          {score}
-        </span>
+        <span className="text-xs font-bold" style={{ fontFamily: 'DM Mono, monospace', color: scoreColor }}>{score}</span>
         <p className="text-[9px]" style={{ fontFamily: 'AIA Everest', color: 'var(--char-60,#6B7180)' }}>score</p>
+      </div>
+    </div>
+  )
+}
+
+function ActivateCard({ agent, score, monthIdx, allAgents }) {
+  const remarks = getPropensityRemarks(agent, score, monthIdx, allAgents)
+  const isHigh = score >= 80
+  const isMed  = score >= 60
+  const borderColor  = isHigh ? '#D31145' : isMed ? '#C97B1A' : '#B0B3BC'
+  const badgeBg      = isHigh ? 'bg-red-50 text-[#D31145]' : isMed ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'
+  const badgeLabel   = isHigh ? 'High' : isMed ? 'Medium' : 'Low'
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-white p-3 shadow-sm border border-gray-100"
+      style={{ borderLeft: `4px solid ${borderColor}` }}>
+      <AgentAvatar agentCode={agent.code} name={agent.name} size={48} className="!rounded-full flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-bold text-aia-darkGray truncate">{agent.name}</p>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${badgeBg}`}>
+            {score} · {badgeLabel}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 truncate mt-0.5">
+          {agent.unitName || '—'} · {agent.segment}
+        </p>
+        {remarks.length > 0 && (
+          <p className="text-[11px] font-medium mt-1 truncate" style={{ color: borderColor }}>
+            {remarks[0]}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -696,17 +724,21 @@ export default function OverviewPage() {
                 ? { label: `See all (${allPropensityList.length})`, onClick: () => setShowPropensityModal(true) }
                 : undefined}
             />
-            <div className="bg-white rounded-xl p-4 mt-3" style={{ border: '1px solid var(--border,#E8E9ED)' }}>
+            <div className="mt-3 flex flex-col gap-2">
               {mode === 'ytd' ? (
-                <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
-                  Switch to Monthly view to see activation opportunities
-                </p>
+                <div className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-sm">
+                  <p className="text-xs" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
+                    Switch to Monthly view to see activation opportunities
+                  </p>
+                </div>
               ) : propensityList.length === 0 ? (
-                <p className="text-xs text-center py-6" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
-                  No high-propensity advisors found
-                </p>
+                <div className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-sm">
+                  <p className="text-xs" style={{ fontFamily: 'AIA Everest', color: 'var(--char-30,#B0B3BC)' }}>
+                    No high-propensity advisors found
+                  </p>
+                </div>
               ) : propensityList.map(({ agent, score }) => (
-                <PropensityRow key={agent.code} agent={agent} score={score} monthIdx={monthIdx} allAgents={activeAgents} />
+                <ActivateCard key={agent.code} agent={agent} score={score} monthIdx={monthIdx} allAgents={activeAgents} />
               ))}
             </div>
           </section>

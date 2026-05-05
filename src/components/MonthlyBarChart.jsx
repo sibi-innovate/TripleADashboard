@@ -1,25 +1,57 @@
 import { useMemo } from 'react'
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Cell,
+  ResponsiveContainer, ReferenceLine, CartesianGrid,
+} from 'recharts'
 import { MONTH_SHORT } from '../constants'
 
 // ---------------------------------------------------------------------------
-// MonthlyBarChart
-// ---------------------------------------------------------------------------
-// Pure CSS/div bar chart — no Recharts dependency.
-// Shows 12 months of data with:
-//   - Past months: light pink bars
-//   - Current month: AIA red bar
-//   - Future months: dashed outline bars (target height if targetData provided)
+// MonthlyBarChart — Recharts-powered
+// Past months: light pink bars. Current month: AIA red bar.
+// Future months: dashed-stroke target bar (if targetData provided).
 //
-// Props:
-//   data            Array<{ month: string, value: number }>  (12 items, month = 'Jan')
+// Props (unchanged API):
+//   data            Array<{ month, value }> | number[]  (12 items)
 //   currentMonthIdx number   0-based (e.g. 3 = April)
-//   targetData      Array<{ month: string, value: number }> | null
+//   targetData      Array<{ month, value }> | null
 //   height          number   chart area height px (default 80)
-//   metric          string   label for metric (e.g. 'FYP', 'Cases')
-//   onMetricChange  (metric) => void   optional
-//   metricOptions   Array<string>      optional list for selector
-//   formatValue     (value) => string  format function for bar labels
+//   metric          string   label for the metric
+//   onMetricChange  (metric) => void
+//   metricOptions   Array<string>
+//   formatValue     (value) => string
 // ---------------------------------------------------------------------------
+
+function CustomTargetBar(props) {
+  const { x, y, width, height: h } = props
+  if (!h || h <= 0) return null
+  return (
+    <rect
+      x={x} y={y} width={width} height={h}
+      fill="none"
+      stroke="#B0B3BC"
+      strokeWidth={1.5}
+      strokeDasharray="3 2"
+      rx={2}
+    />
+  )
+}
+
+function CustomTooltip({ active, payload, label, formatValue }) {
+  if (!active || !payload?.length) return null
+  const actual = payload.find(p => p.dataKey === 'actual')
+  const target = payload.find(p => p.dataKey === 'target')
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-md px-3 py-2 text-xs">
+      <p className="font-bold text-gray-700 mb-1">{label}</p>
+      {actual && actual.value > 0 && (
+        <p className="text-aia-darkGray">Actual: <span className="font-semibold">{formatValue(actual.value)}</span></p>
+      )}
+      {target && target.value > 0 && (
+        <p className="text-gray-400">Target: <span className="font-semibold">{formatValue(target.value)}</span></p>
+      )}
+    </div>
+  )
+}
 
 export default function MonthlyBarChart({
   data = [],
@@ -31,170 +63,106 @@ export default function MonthlyBarChart({
   metricOptions = [],
   formatValue = (v) => String(v),
 }) {
-  // Normalize: accept plain number[] or {month,value}[] interchangeably
-  const normalized = useMemo(() =>
-    data.map((d, i) =>
+  const chartData = useMemo(() => {
+    const normalized = data.map((d, i) =>
       typeof d === 'number'
         ? { month: MONTH_SHORT[i] ?? String(i + 1), value: d }
         : d
-    ), [data])
+    )
+    const targetMap = targetData
+      ? Object.fromEntries(targetData.map(d => [d.month, d.value ?? 0]))
+      : {}
 
-  // Reserve 24px at top for value labels above bars
-  const LABEL_RESERVE = 24
-  const chartHeight = height - LABEL_RESERVE
+    return MONTH_SHORT.map((month, idx) => {
+      const actual = normalized[idx]?.value ?? 0
+      const targetVal = targetMap[month] ?? 0
+      const isFuture = idx > currentMonthIdx
+      return {
+        month,
+        actual: isFuture ? 0 : actual,
+        target: isFuture ? (targetVal || actual) : 0,
+        isCurrent: idx === currentMonthIdx,
+        isPast: idx < currentMonthIdx,
+      }
+    })
+  }, [data, currentMonthIdx, targetData])
 
-  // --------------------------------------------------
-  // Compute max value across actual + target data
-  // --------------------------------------------------
   const maxValue = useMemo(() => {
-    const actuals = normalized.map((d) => d.value ?? 0)
-    const targets = targetData ? targetData.map((d) => d.value ?? 0) : []
-    const all = [...actuals, ...targets]
-    const m = Math.max(...all, 1) // at least 1 to avoid /0
-    return m
-  }, [normalized, targetData])
+    const vals = chartData.flatMap(d => [d.actual, d.target])
+    return Math.max(...vals, 1)
+  }, [chartData])
 
-  // --------------------------------------------------
-  // Build target lookup by month
-  // --------------------------------------------------
-  const targetMap = useMemo(() => {
-    if (!targetData) return {}
-    return Object.fromEntries(targetData.map((d) => [d.month, d.value ?? 0]))
-  }, [targetData])
+  const chartHeight = Math.max(height, 80)
 
-  // --------------------------------------------------
-  // Bar height helper
-  // --------------------------------------------------
-  function barHeightPx(value) {
-    if (!value || value <= 0) return 0
-    const h = (value / maxValue) * chartHeight
-    return Math.max(h, 4) // minimum 4px visible
-  }
-
-  // --------------------------------------------------
-  // Render
-  // --------------------------------------------------
   return (
     <div className="bg-white border border-[#E8E9ED] rounded-xl p-4 shadow-sm">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] font-bold text-[#1C1C28] uppercase tracking-widest">
           {metric}
         </span>
-
         {metricOptions.length > 0 && typeof onMetricChange === 'function' && (
           <select
             value={metric}
-            onChange={(e) => onMetricChange(e.target.value)}
+            onChange={e => onMetricChange(e.target.value)}
             className="border border-[#E8E9ED] rounded-md text-[11px] px-2 py-1 text-[#1C1C28] bg-white focus:outline-none focus:ring-1 focus:ring-[#D31145] cursor-pointer"
           >
-            {metricOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
+            {metricOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
         )}
       </div>
 
-      {/* Bar area — flex items-end grows bars from the bottom */}
-      <div
-        className="flex items-end gap-1"
-        style={{ height: `${height}px` }}
-      >
-        {normalized.map((item, idx) => {
-          const isPast = idx < currentMonthIdx
-          const isCurrent = idx === currentMonthIdx
-          const isFuture = idx > currentMonthIdx
-
-          const actualValue = item.value ?? 0
-          const targetValue = targetMap[item.month] ?? 0
-
-          // Determine bar height
-          let bh = 0
-          if (isPast || isCurrent) {
-            bh = barHeightPx(actualValue)
-          } else {
-            bh = targetValue > 0 ? barHeightPx(targetValue) : 4
-          }
-
-          // Value label: only show for past/current with non-zero values
-          const showLabel = (isPast || isCurrent) && actualValue > 0
-
-          // Bar styles
-          let barClass = 'w-full rounded-t-sm flex-shrink-0'
-
-          if (isPast) {
-            barClass += ' bg-[#F6CCD9]'
-          } else if (isCurrent) {
-            barClass += ' bg-[#D31145]'
-          } else {
-            barClass += ' bg-transparent border border-dashed border-[#B0B3BC] border-b-0'
-          }
-
-          // Month label style
-          const monthLabelClass = isCurrent
-            ? 'text-[9px] font-bold text-[#D31145] flex-shrink-0'
-            : 'text-[9px] font-semibold text-[#6B7180] flex-shrink-0'
-
-          return (
-            <div
-              key={item.month}
-              className="flex flex-col items-center flex-1"
-              // No fixed height — flex items-end on parent aligns bottom edges
-            >
-              {/* Value label pinned above bar */}
-              <div className="flex items-end justify-center w-full" style={{ height: `${LABEL_RESERVE}px` }}>
-                {showLabel && (
-                  <span className="text-[8px] font-mono text-[#6B7180] leading-none truncate max-w-full text-center">
-                    {formatValue(actualValue)}
-                  </span>
-                )}
-              </div>
-
-              {/* Bar — grows upward */}
-              <div
-                className={barClass}
-                style={{ height: `${bh}px`, minHeight: bh > 0 ? '4px' : '0' }}
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <ComposedChart data={chartData} margin={{ top: 16, right: 0, left: 0, bottom: 0 }} barCategoryGap="20%">
+          <CartesianGrid vertical={false} stroke="#F3F4F6" strokeDasharray="0" />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 9, fill: '#9CA3AF', fontWeight: 500 }}
+            axisLine={false}
+            tickLine={false}
+            interval={0}
+          />
+          <YAxis hide domain={[0, maxValue * 1.15]} />
+          <Tooltip
+            content={<CustomTooltip formatValue={formatValue} />}
+            cursor={{ fill: 'rgba(211,17,69,0.04)' }}
+          />
+          {/* Actual bars (past + current) */}
+          <Bar dataKey="actual" radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={true}>
+            {chartData.map((entry, idx) => (
+              <Cell
+                key={idx}
+                fill={entry.isCurrent ? '#D31145' : '#F6CCD9'}
               />
+            ))}
+          </Bar>
+          {/* Target bars (future months) */}
+          <Bar dataKey="target" shape={<CustomTargetBar />} maxBarSize={28} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
 
-              {/* Month label */}
-              <span className={monthLabelClass}>{item.month}</span>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Legend (only if targetData provided) */}
+      {/* Legend */}
       {targetData && (
-        <div className="flex items-center gap-4 mt-3">
+        <div className="flex items-center gap-4 mt-1">
           <LegendSwatch color="#F6CCD9" label="Prior months" />
           <LegendSwatch color="#D31145" label="Current" />
           <LegendSwatchDashed label="Target" />
         </div>
       )}
-
-      {/* Chart note — shown if no targetData and we're past November */}
       {!targetData && currentMonthIdx < 11 && (
-        <p className="text-[9px] text-[#B0B3BC] mt-1">
-          Future months shown without targets.
-        </p>
+        <p className="text-[9px] text-[#B0B3BC] mt-1">Future months shown without targets.</p>
       )}
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Legend helpers
-// ---------------------------------------------------------------------------
-
 function LegendSwatch({ color, label }) {
   return (
     <span className="flex items-center gap-1">
-      <span
-        className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
-        style={{ backgroundColor: color }}
-      />
+      <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
       <span className="text-[9px] text-[#6B7180]">{label}</span>
     </span>
   )

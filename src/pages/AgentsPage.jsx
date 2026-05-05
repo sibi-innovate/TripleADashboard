@@ -183,6 +183,15 @@ export default function AgentsPage() {
     })
   }, [filtered, effectiveSortKey, sortDir])
 
+  // Top 3 by FYC (whole team, unfiltered) for podium display
+  const top3Agents = useMemo(() => {
+    const key = ytdMode ? '_ytdFyc' : 'fycMtd'
+    return [...agents]
+      .filter(a => (a[key] || 0) > 0)
+      .sort((a, b) => (b[key] || 0) - (a[key] || 0))
+      .slice(0, 3)
+  }, [agents, ytdMode])
+
   // Redirect if no data (after all hooks)
   if (!isLoaded) {
     navigate('/')
@@ -404,6 +413,49 @@ export default function AgentsPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Top 3 Podium */}
+        {top3Agents.length >= 1 && (
+          <div className="mb-5">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-3">
+              Top 3 This {ytdMode ? 'YTD' : 'Month'} · FYC
+            </p>
+            <div className="flex gap-3 items-end">
+              {top3Agents.map((agent, idx) => {
+                const fycKey = ytdMode ? '_ytdFyc' : 'fycMtd'
+                const fyc = agent[fycKey] || 0
+                const styles = [
+                  { medal: '🥇', border: 'border-yellow-400', bg: 'bg-gradient-to-b from-yellow-50 to-white', order: 'order-2', avatarSize: 72, tall: true },
+                  { medal: '🥈', border: 'border-gray-300',   bg: 'bg-gradient-to-b from-gray-50 to-white',   order: 'order-1', avatarSize: 56, tall: false },
+                  { medal: '🥉', border: 'border-amber-500',  bg: 'bg-gradient-to-b from-amber-50 to-white',  order: 'order-3', avatarSize: 56, tall: false },
+                ][idx]
+                return (
+                  <div key={agent.code ?? idx}
+                    className={`flex-1 flex flex-col items-center rounded-2xl border-2 ${styles.border} ${styles.bg} shadow-sm ${styles.tall ? 'py-6 px-4' : 'py-4 px-4 mt-5'} ${styles.order} text-center gap-2 min-w-0`}>
+                    <span className="text-3xl leading-none">{styles.medal}</span>
+                    <AgentAvatar agentCode={agent.code} name={agent.name} size={styles.avatarSize}
+                      className="!rounded-full ring-2 ring-white shadow-md flex-shrink-0" />
+                    <div className="min-w-0 w-full mt-1">
+                      <p className={`${styles.tall ? 'text-base' : 'text-sm'} font-extrabold text-aia-darkGray leading-snug truncate`}>
+                        <a href={`/agent/${agent.code}`} className="hover:text-aia-red transition-colors">{agent.name ?? '—'}</a>
+                      </p>
+                      <p className="text-[11px] text-gray-400 truncate">{agent.unitName ?? ''}</p>
+                      {agent.segment && agent.segment !== 'Unknown' && (
+                        <Tag variant={SEGMENT_VARIANT[agent.segment] ?? 'default'} className="mt-1">{agent.segment}</Tag>
+                      )}
+                    </div>
+                    <div className="mt-1">
+                      <p className="text-lg font-extrabold text-aia-darkGray tabular-nums leading-tight">
+                        {formatCurrency(fyc)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-widest">FYC</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ---- Table card ---- */}
         <div className="bg-white rounded-xl shadow overflow-hidden">

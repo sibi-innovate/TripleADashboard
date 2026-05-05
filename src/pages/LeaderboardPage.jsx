@@ -6,7 +6,7 @@ import { formatCurrency, formatNumber } from '../utils/formatters'
 import { exportMonthlyReport } from '../utils/exportExcel'
 import Tag from '../components/Tag'
 import { CURRENT_MONTH_IDX } from '../constants'
-import { getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases } from '../utils/calculations'
+import { getAgentYtdFyp, getAgentYtdFyc, getAgentYtdCases, getAgentYtdAnp } from '../utils/calculations'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,37 @@ const TOP3_ROW = [
   'border-l-4 border-gray-300 bg-gray-50/60',
   'border-l-4 border-amber-600/60 bg-amber-50/30',
 ]
+
+const PODIUM_STYLES = [
+  { medal: '🥇', border: 'border-yellow-400', bg: 'bg-gradient-to-b from-yellow-50 to-white', shadow: 'shadow-yellow-100', order: 'order-2', avatarSize: 72, nameSize: 'text-base', tall: true },
+  { medal: '🥈', border: 'border-gray-300',   bg: 'bg-gradient-to-b from-gray-50 to-white',   shadow: 'shadow-gray-100',   order: 'order-1', avatarSize: 56, nameSize: 'text-sm',  tall: false },
+  { medal: '🥉', border: 'border-amber-500',  bg: 'bg-gradient-to-b from-amber-50 to-white',  shadow: 'shadow-amber-100',  order: 'order-3', avatarSize: 56, nameSize: 'text-sm',  tall: false },
+]
+
+function PodiumCard({ agent, rank, value, metricFmt, metricLabel }) {
+  const s = PODIUM_STYLES[rank - 1]
+  return (
+    <div className={`flex-1 flex flex-col items-center rounded-2xl border-2 ${s.border} ${s.bg} shadow-sm ${s.tall ? 'py-6 px-4' : 'py-4 px-4 mt-4'} ${s.order} text-center gap-2 min-w-0`}>
+      <span className="text-3xl leading-none mb-1">{s.medal}</span>
+      <AgentAvatar agentCode={agent.code} name={agent.name} size={s.avatarSize} className="!rounded-full ring-2 ring-white shadow-md flex-shrink-0" />
+      <div className="min-w-0 w-full mt-1">
+        <p className={`${s.nameSize} font-extrabold text-aia-darkGray leading-snug truncate`}>
+          {agent.code
+            ? <Link to={`/agent/${agent.code}`} className="hover:text-aia-red transition-colors">{agent.name ?? '—'}</Link>
+            : (agent.name ?? '—')}
+        </p>
+        <p className="text-[11px] text-gray-400 truncate">{agent.unitName ?? ''}</p>
+        {agent.segment && agent.segment !== 'Unknown' && (
+          <Tag variant={SEGMENT_TAG_VARIANT[agent.segment] ?? 'default'}>{agent.segment}</Tag>
+        )}
+      </div>
+      <div className="mt-1">
+        <p className="text-lg font-extrabold text-aia-darkGray tabular-nums leading-tight">{metricFmt(value)}</p>
+        <p className="text-[10px] text-gray-400 uppercase tracking-widest">{metricLabel}</p>
+      </div>
+    </div>
+  )
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -132,7 +163,7 @@ export default function LeaderboardPage() {
   const monthData = useMemo(() => {
     return agents.map(a => {
       const base = ytdMode
-        ? { fyp: getAgentYtdFyp(a, monthIdx), fyc: getAgentYtdFyc(a, monthIdx), cases: getAgentYtdCases(a, monthIdx), anp: getAgentYtdFyp(a, monthIdx) }
+        ? { fyp: getAgentYtdFyp(a, monthIdx), fyc: getAgentYtdFyc(a, monthIdx), cases: getAgentYtdCases(a, monthIdx), anp: getAgentYtdAnp(a, monthIdx) }
         : (a.monthly?.[selectedMonth] ?? {})
       const recruits = recruiterCountMap.get(a.code) || recruiterCountMap.get(a.name) || 0
       return { ...a, m: { ...base, recruits } }
@@ -359,6 +390,22 @@ export default function LeaderboardPage() {
               </p>
             </div>
 
+            {/* ── Podium top 3 */}
+            {top30.length >= 1 && (
+              <div className="flex gap-3 items-end">
+                {top30.slice(0, 3).map((agent, idx) => (
+                  <PodiumCard
+                    key={agent.code ?? idx}
+                    agent={agent}
+                    rank={idx + 1}
+                    value={agent.m[metricKey] || 0}
+                    metricFmt={activeMeta.fmt}
+                    metricLabel={`${activeMeta.label} ${ytdMode ? 'YTD' : monthLabel.slice(0,3)}`}
+                  />
+                ))}
+              </div>
+            )}
+
             {/* Top 30 table */}
             <section>
               <div className="bg-white rounded-2xl shadow-md overflow-hidden">
@@ -370,9 +417,18 @@ export default function LeaderboardPage() {
                         <th className="sticky left-0 z-20 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[200px] border-r border-[#b80e3a] shadow-[2px_0_6px_rgba(0,0,0,0.15)]">Advisor</th>
                         <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[80px]">Area</th>
                         <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[120px]">Unit</th>
-                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[130px]">
-                          {activeMeta.label} {ytdMode ? 'YTD' : monthLabel.slice(0,3)}
-                        </th>
+                        {ytdMode ? (
+                          <>
+                            <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[120px]">FYP YTD</th>
+                            <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[120px]">ANP YTD</th>
+                            <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[120px]">FYC YTD</th>
+                            <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[90px]">Cases YTD</th>
+                          </>
+                        ) : (
+                          <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[130px]">
+                            {activeMeta.label} {monthLabel.slice(0,3)}
+                          </th>
+                        )}
                         <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145] min-w-[140px]">Agency Rank</th>
                       </tr>
                     </thead>
@@ -397,7 +453,7 @@ export default function LeaderboardPage() {
                                 : <span className="text-gray-500">{rank}</span>}
                             </td>
 
-                            {/* Advisor — sticky (fully opaque so scrolled cols don't bleed through) */}
+                            {/* Advisor — sticky */}
                             <td className={`sticky left-0 z-10 px-4 py-3 border-r border-gray-100 shadow-[2px_0_6px_rgba(0,0,0,0.08)] ${isTop3 ? ['bg-yellow-50','bg-gray-100','bg-amber-50'][idx] : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                               <div className="flex items-center gap-2.5">
                                 <AgentAvatar agentCode={agent.code} name={agent.name} size={32} className="!rounded-full flex-shrink-0" />
@@ -434,10 +490,19 @@ export default function LeaderboardPage() {
                               {agent.unitName ?? '—'}
                             </td>
 
-                            {/* Metric value */}
-                            <td className="px-4 py-3 text-right font-bold tabular-nums text-aia-darkGray">
-                              {activeMeta.fmt(agent.m[metricKey] || 0)}
-                            </td>
+                            {/* Metric value(s) */}
+                            {ytdMode ? (
+                              <>
+                                <td className="px-4 py-3 text-right tabular-nums text-gray-700">{formatCurrency(agent.m.fyp || 0)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums font-bold text-aia-darkGray">{formatCurrency(agent.m.anp || 0)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-gray-700">{formatCurrency(agent.m.fyc || 0)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-gray-700">{formatNumber(agent.m.cases || 0)}</td>
+                              </>
+                            ) : (
+                              <td className="px-4 py-3 text-right font-bold tabular-nums text-aia-darkGray">
+                                {activeMeta.fmt(agent.m[metricKey] || 0)}
+                              </td>
+                            )}
 
                             {/* Agency rank context */}
                             <td className="px-4 py-3 text-right">
@@ -458,7 +523,7 @@ export default function LeaderboardPage() {
                       })}
                       {top30.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-gray-400 text-sm font-medium">
+                          <td colSpan={ytdMode ? 9 : 6} className="px-4 py-12 text-center text-gray-400 text-sm font-medium">
                             No advisors match your current filters.
                           </td>
                         </tr>

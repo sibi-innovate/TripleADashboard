@@ -364,12 +364,13 @@ function ForecastChart({ chartData, priorStats, format }) {
         <YAxis hide />
         <Tooltip
           formatter={(v, name) => {
-            if (v == null) return null
+            if (v == null) return [null, null]
+            if (/^\d{4}$/.test(name)) return [null, null]
             const labels = {
               avg:         'Historical Avg',
               target30:    '+30% Target',
               target50:    '+50% Target',
-              actual2026:  '2026 Actual',
+              actual2026:  `${CURRENT_YEAR} Actual`,
             }
             return [format(v), labels[name] ?? name]
           }}

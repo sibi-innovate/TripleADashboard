@@ -733,6 +733,34 @@ export default function HistoricalPage() {
           </div>
         </Section>
 
+        {/* ── 1b. 2026 Forecast & Growth Targets ───────────────────────────── */}
+        {forecastData && (
+          <Section
+            title="2026 Forecast & Growth Targets"
+            subtitle={`Month-on-month ${activeMeta.label} — historical pattern, this year's actual, and growth targets`}
+          >
+            <Card>
+              <ForecastChart
+                chartData={forecastData.chartData}
+                priorStats={forecastData.priorStats}
+                format={activeMeta.format}
+              />
+              <ForecastSummary
+                avgMonthly={forecastData.avgMonthly}
+                target30Monthly={forecastData.target30Monthly}
+                target50Monthly={forecastData.target50Monthly}
+                currentPace={forecastData.currentPace}
+                format={activeMeta.format}
+              />
+              {forecastData.priorStats.length === 0 && (
+                <p className="text-xs text-gray-400 italic mt-3">
+                  Upload prior-year reports to generate an accurate baseline and targets.
+                </p>
+              )}
+            </Card>
+          </Section>
+        )}
+
         {/* ── 2. Metric trend bar chart ─────────────────────────────────────── */}
         <Section
           title={`${activeMeta.label} Trend`}

@@ -35,10 +35,6 @@ const RACE_BATCHES = [
   // { key: 'batch2', label: 'Batch 2', start: '2026-05-01', end: '2026-08-31', desc: '...' },
 ];
 
-const BUDDY_CAMPAIGN_TABS = [
-  { key: 'monthly',    label: 'Monthly Campaign' },
-  { key: 'quarterly',  label: 'Quarterly Campaign' },
-];
 
 // Buddy pairs for the April challenge — matched by partial name (case-insensitive)
 const BUDDY_PAIRS = [
@@ -118,7 +114,7 @@ export default function RecognitionPage() {
         {activeTab === 'new-advisors' && <NewAdvisorsTab monthIdx={monthIdx} />}
         {activeTab === 'awards'       && <AwardsTab monthIdx={monthIdx} />}
         {activeTab === 'highlights'   && <HighlightsTab monthIdx={monthIdx} />}
-        {activeTab === 'buddy-system' && <BuddySystemTab monthIdx={monthIdx} />}
+        {activeTab === 'buddy-system' && <BuddySystemTab />}
         {activeTab === '90-day-race'  && <RaceTab monthIdx={monthIdx} />}
       </div>
     </div>
@@ -820,11 +816,20 @@ function HighlightsTab({ monthIdx }) {
 
 const QUARTERLY_ABBRS = ['APR', 'MAY', 'JUN'];
 
-function BuddySystemTab({ monthIdx }) {
+// Period options for the buddy system — 3 months + quarter view
+const BUDDY_PERIODS = [
+  { key: 'APR', label: 'April',   type: 'month' },
+  { key: 'MAY', label: 'May',     type: 'month' },
+  { key: 'JUN', label: 'June',    type: 'month' },
+  { key: 'Q2',  label: 'Quarter', type: 'quarter' },
+];
+
+function BuddySystemTab() {
   const { activeAgents } = useData();
-  const [campaignTab, setCampaignTab] = useState('monthly');
-  const abbr = MONTH_ABBRS[monthIdx];
-  const monthLabel = MONTH_LABELS[monthIdx];
+  const [period, setPeriod] = useState('APR');
+
+  const isQuarter = period === 'Q2';
+  const periodLabel = BUDDY_PERIODS.find(p => p.key === period)?.label || period;
 
   function findAgent(buddyName) {
     const words = buddyName.toLowerCase().split(/\s+/).filter(Boolean);
@@ -836,16 +841,13 @@ function BuddySystemTab({ monthIdx }) {
 
   function didProduce(agent, monthAbbr) {
     if (!agent) return false;
-    const monthly = agent.monthly?.[monthAbbr];
-    if (!monthly) return false;
-    // Use AIA's dedicated producing flag as the primary signal,
-    // fall back to any positive financial metric (covers A&H-only producers
-    // whose OL/VUL case count is 0)
-    return monthly.producing === true
-      || (monthly.cases > 0)
-      || (monthly.fyc  > 0)
-      || (monthly.fyp  > 0)
-      || (monthly.anp  > 0);
+    const m = agent.monthly?.[monthAbbr];
+    if (!m) return false;
+    return m.producing === true
+      || (m.cases > 0)
+      || (m.fyc   > 0)
+      || (m.fyp   > 0)
+      || (m.anp   > 0);
   }
 
   function qtyCases(agent) {
@@ -856,59 +858,66 @@ function BuddySystemTab({ monthIdx }) {
   const pairs = BUDDY_PAIRS.map(([nameA, nameB], idx) => {
     const agentA = findAgent(nameA);
     const agentB = findAgent(nameB);
-    // Both must have produced in the selected month
-    const activeA = didProduce(agentA, abbr);
-    const activeB = didProduce(agentB, abbr);
-    const bothActive = activeA && activeB;
+
+    // Monthly: both produced in the selected month
+    const activeA = isQuarter ? false : didProduce(agentA, period);
+    const activeB = isQuarter ? false : didProduce(agentB, period);
+    const bothActive = !isQuarter && activeA && activeB;
+
     // Quarterly: both have ≥3 cases across Apr–Jun
     const casesA = qtyCases(agentA);
     const casesB = qtyCases(agentB);
     const quarterlyQualified = casesA >= 3 && casesB >= 3;
+
     return { pairNum: idx + 1, nameA, nameB, agentA, agentB, activeA, activeB, bothActive, casesA, casesB, quarterlyQualified };
   });
 
-  const activePairs  = pairs.filter(p => p.bothActive);
-  const otherPairs   = pairs.filter(p => !p.bothActive);
-  const monthlyWinners = activePairs.length;
-  const quarterlyWinners = pairs.filter(p => p.quarterlyQualified).length;
+  const qualifiedPairs = isQuarter
+    ? pairs.filter(p => p.quarterlyQualified)
+    : pairs.filter(p => p.bothActive);
 
+  const otherPairs = isQuarter
+    ? pairs.filter(p => !p.quarterlyQualified)
+    : pairs.filter(p => !p.bothActive);
+
+  // ── Pair card — context-aware for monthly vs quarter ─────────────────────
   const PairCard = ({ p }) => {
     const { pairNum, nameA, nameB, agentA, agentB, activeA, activeB, bothActive, casesA, casesB, quarterlyQualified } = p;
-    const noneActive = !activeA && !activeB;
+    const qualified  = isQuarter ? quarterlyQualified : bothActive;
+    const noneActive = isQuarter ? (casesA === 0 && casesB === 0) : (!activeA && !activeB);
+
     return (
       <div
         className="rounded-xl border shadow-sm overflow-hidden"
         style={{
-          backgroundColor: bothActive ? '#F1FBF3' : '#fff',
-          borderColor: bothActive ? '#A5D6A7' : noneActive ? '#FFCDD2' : '#FFE0B2',
+          backgroundColor: qualified ? '#F1FBF3' : '#fff',
+          borderColor:     qualified ? '#A5D6A7' : noneActive ? '#FFCDD2' : '#FFE0B2',
           borderLeftWidth: 4,
-          borderLeftColor: bothActive ? '#2E7D32' : noneActive ? '#D31145' : '#FF9800',
+          borderLeftColor: qualified ? '#2E7D32' : noneActive ? '#D31145' : '#FF9800',
         }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: bothActive ? '#2E7D32' : '#848A90' }}>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: qualified ? '#2E7D32' : '#848A90' }}>
             Pair {pairNum}
           </span>
           <div className="flex items-center gap-1.5">
-            {bothActive && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#C8E6C9', color: '#1B5E20' }}>
-                🍚 5 kg rice each
+            {qualified && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: isQuarter ? '#E3F2FD' : '#C8E6C9', color: isQuarter ? '#0D47A1' : '#1B5E20' }}>
+                {isQuarter ? '🏆 10 kg rice each' : '🍚 5 kg rice each'}
               </span>
             )}
-            {quarterlyQualified && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E3F2FD', color: '#0D47A1' }}>
-                🏆 +10 kg quarterly
-              </span>
-            )}
-            {!bothActive && (
+            {!qualified && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                 style={{
                   backgroundColor: noneActive ? '#FFEBEE' : '#FFF3E0',
-                  color: noneActive ? '#C62828' : '#E65100',
+                  color:           noneActive ? '#C62828' : '#E65100',
                 }}
               >
-                {noneActive ? 'Neither Active' : 'One Active'}
+                {isQuarter
+                  ? (casesA < 3 && casesB < 3 ? 'Neither at 3 cases' : 'One short')
+                  : (noneActive ? 'Neither produced' : 'One produced')}
               </span>
             )}
           </div>
@@ -919,28 +928,32 @@ function BuddySystemTab({ monthIdx }) {
           {[
             { name: nameA, agent: agentA, active: activeA, cases: casesA },
             { name: nameB, agent: agentB, active: activeB, cases: casesB },
-          ].map(({ name, agent, active, cases }, j) => (
-            <div key={j} className="flex items-center justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-                  {agent ? agent.name : name}
-                </p>
-                {agent ? (
-                  <p className="text-[10px] truncate" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
-                    {agent.unitName || '—'} · {agent.segment} · Q cases: {cases}
+          ].map(({ name, agent, active, cases }, j) => {
+            const memberQualified = isQuarter ? (cases >= 3) : active;
+            return (
+              <div key={j} className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold truncate" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+                    {agent ? agent.name : name}
                   </p>
-                ) : (
-                  <p className="text-[10px]" style={{ color: '#E65100', fontFamily: 'AIA Everest' }}>Not found in data</p>
-                )}
+                  {agent ? (
+                    <p className="text-[10px] truncate" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+                      {agent.unitName || '—'} · {agent.segment}
+                      {isQuarter ? ` · Q2 cases: ${cases}` : ''}
+                    </p>
+                  ) : (
+                    <p className="text-[10px]" style={{ color: '#E65100', fontFamily: 'AIA Everest' }}>Not found in data</p>
+                  )}
+                </div>
+                <div
+                  className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                  style={{ backgroundColor: memberQualified ? '#2E7D32' : '#D31145' }}
+                >
+                  {memberQualified ? '✓' : '✗'}
+                </div>
               </div>
-              <div
-                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                style={{ backgroundColor: active ? '#2E7D32' : '#D31145' }}
-              >
-                {active ? '✓' : '✗'}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -949,154 +962,77 @@ function BuddySystemTab({ monthIdx }) {
   return (
     <div>
       {/* Header */}
-      <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-base font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
-            Buddy System Challenge
-          </h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)', fontFamily: 'AIA Everest' }}>
-            {monthLabel} · April–June Quarter
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <div className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#E8F5E9', color: '#1B5E20', fontFamily: 'AIA Everest' }}>
-            🍚 Monthly: {monthlyWinners}/{pairs.length} pairs · 5 kg rice
-          </div>
-          <div className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#E3F2FD', color: '#0D47A1', fontFamily: 'AIA Everest' }}>
-            🏆 Quarterly: {quarterlyWinners}/{pairs.length} pairs · 10 kg rice
-          </div>
-        </div>
+      <div className="mb-5">
+        <h2 className="text-base font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+          Buddy System Challenge
+        </h2>
+        <p className="text-xs mt-0.5" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+          April–June 2026 · {isQuarter ? 'Both reach 3 cases in Q2 — 🏆 10 kg rice each' : `Both produce in ${periodLabel} — 🍚 5 kg rice each`}
+        </p>
       </div>
 
-      {/* Campaign tabs */}
-      <div className="flex gap-1.5 mb-6 border-b" style={{ borderColor: 'var(--border, #E8E9ED)' }}>
-        {BUDDY_CAMPAIGN_TABS.map(tab => (
+      {/* Period selector */}
+      <div className="flex gap-1.5 mb-6">
+        {BUDDY_PERIODS.map(p => (
           <button
-            key={tab.key}
-            onClick={() => setCampaignTab(tab.key)}
-            className="px-4 py-2.5 text-xs transition-colors duration-150"
+            key={p.key}
+            onClick={() => setPeriod(p.key)}
+            className="px-4 py-1.5 rounded text-xs font-semibold transition-colors"
             style={{
               fontFamily: 'AIA Everest',
-              fontWeight: campaignTab === tab.key ? 700 : 500,
-              color: campaignTab === tab.key ? '#D31145' : 'var(--char-60, #6B7180)',
-              borderBottom: campaignTab === tab.key ? '2px solid #D31145' : '2px solid transparent',
+              backgroundColor: period === p.key
+                ? (p.type === 'quarter' ? '#1F78AD' : '#D31145')
+                : '#fff',
+              color:  period === p.key ? '#fff' : '#6B7180',
+              border: `1px solid ${period === p.key ? (p.type === 'quarter' ? '#1F78AD' : '#D31145') : '#E8E9ED'}`,
             }}
           >
-            {tab.label}
+            {p.label}
           </button>
         ))}
+        {/* Score summary chip */}
+        <div className="ml-auto text-xs font-bold px-3 py-1.5 rounded-lg self-center"
+          style={{
+            backgroundColor: isQuarter ? '#E3F2FD' : '#E8F5E9',
+            color:           isQuarter ? '#0D47A1' : '#1B5E20',
+            fontFamily: 'AIA Everest',
+          }}>
+          {isQuarter ? '🏆' : '🍚'} {qualifiedPairs.length}/{pairs.length} pairs qualified
+        </div>
       </div>
 
-      {/* Monthly Campaign View */}
-      {campaignTab === 'monthly' && (
-        <div>
-          {/* Campaign rules */}
-          <div className="mb-6 rounded-xl border p-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Monthly Category</p>
-              <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both advisors must produce in {monthLabel}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>Qualification: Both have cases or FYC beyond 0 in the same month</p>
-              <p className="text-xs mt-2" style={{ color: '#D31145', fontFamily: 'AIA Everest', fontWeight: 600 }}>🍚 Prize: 5 kg of rice each</p>
-            </div>
+      {/* Qualified pairs */}
+      {qualifiedPairs.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-px flex-1" style={{ backgroundColor: isQuarter ? '#BBDEFB' : '#A5D6A7' }} />
+            <span className="text-xs font-bold uppercase tracking-widest px-2"
+              style={{ color: isQuarter ? '#0D47A1' : '#2E7D32', fontFamily: 'AIA Everest' }}>
+              {isQuarter ? '🏆 Qualified' : '✓ Both Produced'} — {qualifiedPairs.length}
+            </span>
+            <div className="h-px flex-1" style={{ backgroundColor: isQuarter ? '#BBDEFB' : '#A5D6A7' }} />
           </div>
-
-          {/* Active pairs section */}
-          {activePairs.length > 0 && (
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
-                <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#2E7D32', fontFamily: 'AIA Everest' }}>
-                  ✓ Active Pairs — {activePairs.length}
-                </span>
-                <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {activePairs.map(p => <PairCard key={p.pairNum} p={p} />)}
-              </div>
-            </div>
-          )}
-
-          {/* Other pairs section */}
-          {otherPairs.length > 0 && (
-            <div>
-              {activePairs.length > 0 && (
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
-                  <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
-                    Other Pairs — {otherPairs.length}
-                  </span>
-                  <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {otherPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
-              </div>
-            </div>
-          )}
-
-          {pairs.length === 0 && (
-            <EmptyState title="No buddy pairs configured" message="Add buddy pairs to get started." />
-          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {qualifiedPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+          </div>
         </div>
       )}
 
-      {/* Quarterly Campaign View */}
-      {campaignTab === 'quarterly' && (
+      {/* Other pairs */}
+      {otherPairs.length > 0 && (
         <div>
-          {/* Campaign rules */}
-          <div className="mb-6 rounded-xl border p-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Quarterly Category (Apr–Jun)</p>
-              <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both advisors reach 3+ cases total across April, May, and June</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>Qualification: Combined cases across Q2 (Apr+May+Jun) ≥ 3 each</p>
-              <p className="text-xs mt-2" style={{ color: '#D31145', fontFamily: 'AIA Everest', fontWeight: 600 }}>🏆 Prize: 10 kg of rice each</p>
+          {qualifiedPairs.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+              <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
+                {isQuarter ? 'Not Yet Qualified' : 'Did Not Both Produce'} — {otherPairs.length}
+              </span>
+              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
             </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {otherPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
           </div>
-
-          {/* Quarterly qualified pairs */}
-          {(() => {
-            const quarterlyPairs = pairs.filter(p => p.quarterlyQualified);
-            const nonQualifiedPairs = pairs.filter(p => !p.quarterlyQualified);
-            return (
-              <>
-                {quarterlyPairs.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="h-px flex-1" style={{ backgroundColor: '#BBDEFB' }} />
-                      <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#0D47A1', fontFamily: 'AIA Everest' }}>
-                        🏆 Qualified — {quarterlyPairs.length}
-                      </span>
-                      <div className="h-px flex-1" style={{ backgroundColor: '#BBDEFB' }} />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {quarterlyPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
-                    </div>
-                  </div>
-                )}
-
-                {nonQualifiedPairs.length > 0 && (
-                  <div>
-                    {quarterlyPairs.length > 0 && (
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
-                        <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
-                          Not Yet Qualified — {nonQualifiedPairs.length}
-                        </span>
-                        <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
-                      </div>
-                    )}
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {nonQualifiedPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
-                    </div>
-                  </div>
-                )}
-
-                {pairs.length === 0 && (
-                  <EmptyState title="No buddy pairs configured" message="Add buddy pairs to get started." />
-                )}
-              </>
-            );
-          })()}
         </div>
       )}
     </div>

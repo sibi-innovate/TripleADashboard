@@ -19,6 +19,25 @@ const TABS = [
   { key: 'awards',       label: 'Awards' },
   { key: 'highlights',   label: 'Highlights' },
   { key: 'buddy-system', label: 'Buddy System' },
+  { key: '90-day-race',  label: '90 Day RACE' },
+];
+
+// ─── 90 Day RACE — batch definitions ──────────────────────────────────────────
+// Add future batches here as new entries.
+const RACE_BATCHES = [
+  {
+    key:   'batch1',
+    label: 'Batch 1',
+    start: '2026-01-01',
+    end:   '2026-04-30',
+    desc:  'Licensed Jan 1 – Apr 30, 2026',
+  },
+  // { key: 'batch2', label: 'Batch 2', start: '2026-05-01', end: '2026-08-31', desc: '...' },
+];
+
+const BUDDY_CAMPAIGN_TABS = [
+  { key: 'monthly',    label: 'Monthly Campaign' },
+  { key: 'quarterly',  label: 'Quarterly Campaign' },
 ];
 
 // Buddy pairs for the April challenge — matched by partial name (case-insensitive)
@@ -100,6 +119,7 @@ export default function RecognitionPage() {
         {activeTab === 'awards'       && <AwardsTab monthIdx={monthIdx} />}
         {activeTab === 'highlights'   && <HighlightsTab monthIdx={monthIdx} />}
         {activeTab === 'buddy-system' && <BuddySystemTab monthIdx={monthIdx} />}
+        {activeTab === '90-day-race'  && <RaceTab monthIdx={monthIdx} />}
       </div>
     </div>
   );
@@ -802,6 +822,7 @@ const QUARTERLY_ABBRS = ['APR', 'MAY', 'JUN'];
 
 function BuddySystemTab({ monthIdx }) {
   const { activeAgents } = useData();
+  const [campaignTab, setCampaignTab] = useState('monthly');
   const abbr = MONTH_ABBRS[monthIdx];
   const monthLabel = MONTH_LABELS[monthIdx];
 
@@ -813,6 +834,20 @@ function BuddySystemTab({ monthIdx }) {
     }) || null;
   }
 
+  function didProduce(agent, monthAbbr) {
+    if (!agent) return false;
+    const monthly = agent.monthly?.[monthAbbr];
+    if (!monthly) return false;
+    // Use AIA's dedicated producing flag as the primary signal,
+    // fall back to any positive financial metric (covers A&H-only producers
+    // whose OL/VUL case count is 0)
+    return monthly.producing === true
+      || (monthly.cases > 0)
+      || (monthly.fyc  > 0)
+      || (monthly.fyp  > 0)
+      || (monthly.anp  > 0);
+  }
+
   function qtyCases(agent) {
     if (!agent) return 0;
     return QUARTERLY_ABBRS.reduce((s, ab) => s + (agent.monthly?.[ab]?.cases || 0), 0);
@@ -821,8 +856,9 @@ function BuddySystemTab({ monthIdx }) {
   const pairs = BUDDY_PAIRS.map(([nameA, nameB], idx) => {
     const agentA = findAgent(nameA);
     const agentB = findAgent(nameB);
-    const activeA = !!(agentA?.monthly?.[abbr]?.producing);
-    const activeB = !!(agentB?.monthly?.[abbr]?.producing);
+    // Both must have produced in the selected month
+    const activeA = didProduce(agentA, abbr);
+    const activeB = didProduce(agentB, abbr);
     const bothActive = activeA && activeB;
     // Quarterly: both have ≥3 cases across Apr–Jun
     const casesA = qtyCases(agentA);
@@ -932,52 +968,362 @@ function BuddySystemTab({ monthIdx }) {
         </div>
       </div>
 
-      {/* Campaign rules */}
-      <div className="mb-6 rounded-xl border p-4 grid sm:grid-cols-2 gap-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Monthly Category</p>
-          <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both active in {monthLabel}</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>🍚 5 kg of rice each</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Quarterly Category (Apr–Jun)</p>
-          <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both reach 3 cases total (Apr+May+Jun)</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>🏆 10 kg of rice each</p>
-        </div>
+      {/* Campaign tabs */}
+      <div className="flex gap-1.5 mb-6 border-b" style={{ borderColor: 'var(--border, #E8E9ED)' }}>
+        {BUDDY_CAMPAIGN_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setCampaignTab(tab.key)}
+            className="px-4 py-2.5 text-xs transition-colors duration-150"
+            style={{
+              fontFamily: 'AIA Everest',
+              fontWeight: campaignTab === tab.key ? 700 : 500,
+              color: campaignTab === tab.key ? '#D31145' : 'var(--char-60, #6B7180)',
+              borderBottom: campaignTab === tab.key ? '2px solid #D31145' : '2px solid transparent',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Active pairs section */}
-      {activePairs.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
-            <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#2E7D32', fontFamily: 'AIA Everest' }}>
-              ✓ Active Pairs — {activePairs.length}
-            </span>
-            <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
+      {/* Monthly Campaign View */}
+      {campaignTab === 'monthly' && (
+        <div>
+          {/* Campaign rules */}
+          <div className="mb-6 rounded-xl border p-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Monthly Category</p>
+              <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both advisors must produce in {monthLabel}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>Qualification: Both have cases or FYC beyond 0 in the same month</p>
+              <p className="text-xs mt-2" style={{ color: '#D31145', fontFamily: 'AIA Everest', fontWeight: 600 }}>🍚 Prize: 5 kg of rice each</p>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {activePairs.map(p => <PairCard key={p.pairNum} p={p} />)}
-          </div>
+
+          {/* Active pairs section */}
+          {activePairs.length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
+                <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#2E7D32', fontFamily: 'AIA Everest' }}>
+                  ✓ Active Pairs — {activePairs.length}
+                </span>
+                <div className="h-px flex-1" style={{ backgroundColor: '#A5D6A7' }} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {activePairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Other pairs section */}
+          {otherPairs.length > 0 && (
+            <div>
+              {activePairs.length > 0 && (
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+                  <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
+                    Other Pairs — {otherPairs.length}
+                  </span>
+                  <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {otherPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+              </div>
+            </div>
+          )}
+
+          {pairs.length === 0 && (
+            <EmptyState title="No buddy pairs configured" message="Add buddy pairs to get started." />
+          )}
         </div>
       )}
 
-      {/* Other pairs section */}
-      {otherPairs.length > 0 && (
+      {/* Quarterly Campaign View */}
+      {campaignTab === 'quarterly' && (
         <div>
-          {activePairs.length > 0 && (
-            <div className="flex items-center gap-2 mb-3">
-              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
-              <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
-                Other Pairs — {otherPairs.length}
-              </span>
-              <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+          {/* Campaign rules */}
+          <div className="mb-6 rounded-xl border p-4" style={{ backgroundColor: '#FAFAFA', borderColor: '#E8E9ED' }}>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#848A90' }}>Quarterly Category (Apr–Jun)</p>
+              <p className="text-xs font-semibold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>Both advisors reach 3+ cases total across April, May, and June</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--char-60, #6B7180)' }}>Qualification: Combined cases across Q2 (Apr+May+Jun) ≥ 3 each</p>
+              <p className="text-xs mt-2" style={{ color: '#D31145', fontFamily: 'AIA Everest', fontWeight: 600 }}>🏆 Prize: 10 kg of rice each</p>
             </div>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {otherPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
           </div>
+
+          {/* Quarterly qualified pairs */}
+          {(() => {
+            const quarterlyPairs = pairs.filter(p => p.quarterlyQualified);
+            const nonQualifiedPairs = pairs.filter(p => !p.quarterlyQualified);
+            return (
+              <>
+                {quarterlyPairs.length > 0 && (
+                  <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-px flex-1" style={{ backgroundColor: '#BBDEFB' }} />
+                      <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#0D47A1', fontFamily: 'AIA Everest' }}>
+                        🏆 Qualified — {quarterlyPairs.length}
+                      </span>
+                      <div className="h-px flex-1" style={{ backgroundColor: '#BBDEFB' }} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {quarterlyPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+                    </div>
+                  </div>
+                )}
+
+                {nonQualifiedPairs.length > 0 && (
+                  <div>
+                    {quarterlyPairs.length > 0 && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+                        <span className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: '#848A90', fontFamily: 'AIA Everest' }}>
+                          Not Yet Qualified — {nonQualifiedPairs.length}
+                        </span>
+                        <div className="h-px flex-1" style={{ backgroundColor: '#E8E9ED' }} />
+                      </div>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {nonQualifiedPairs.map(p => <PairCard key={p.pairNum} p={p} />)}
+                    </div>
+                  </div>
+                )}
+
+                {pairs.length === 0 && (
+                  <EmptyState title="No buddy pairs configured" message="Add buddy pairs to get started." />
+                )}
+              </>
+            );
+          })()}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 90 Day RACE Tab ──────────────────────────────────────────────────────────
+
+function RaceTab({ monthIdx }) {
+  const { activeAgents } = useData();
+  const [batchKey, setBatchKey] = useState('batch1');
+  const [sortBy, setSortBy]     = useState('fyc'); // 'fyc' | 'cases'
+
+  const batch = RACE_BATCHES.find(b => b.key === batchKey) || RACE_BATCHES[0];
+
+  // ── Find advisors in this batch by appointmentDate ──────────────────────────
+  const batchAdvisors = activeAgents.filter(a => {
+    if (!a.appointmentDate) return false;
+    return a.appointmentDate >= batch.start && a.appointmentDate <= batch.end;
+  });
+
+  // ── Compute YTD metrics: sum all months from Jan up to selected monthIdx ────
+  const abbrsToSum = MONTH_ABBRS.slice(0, monthIdx + 1); // e.g. JAN–MAY
+
+  const advisorRows = batchAdvisors.map(a => {
+    const licenseMonth = a.appointmentDate
+      ? MONTH_ABBRS[new Date(a.appointmentDate + 'T00:00:00').getMonth()]
+      : '—';
+    const licenseMonthLabel = a.appointmentDate
+      ? new Date(a.appointmentDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })
+      : '—';
+    const ytdCases = abbrsToSum.reduce((s, ab) => s + (a.monthly?.[ab]?.cases || 0), 0);
+    const ytdFyc   = abbrsToSum.reduce((s, ab) => s + (a.monthly?.[ab]?.fyc   || 0), 0);
+    const hasProduced = ytdCases > 0 || ytdFyc > 0;
+    return { agent: a, licenseMonth, licenseMonthLabel, ytdCases, ytdFyc, hasProduced };
+  });
+
+  const sorted = [...advisorRows].sort((a, b) =>
+    sortBy === 'fyc' ? b.ytdFyc - a.ytdFyc : b.ytdCases - a.ytdCases
+  );
+
+  // ── Unit summary ────────────────────────────────────────────────────────────
+  const unitMap = {};
+  for (const row of advisorRows) {
+    const u = row.agent.unitName || 'Unassigned';
+    if (!unitMap[u]) unitMap[u] = { unitName: u, count: 0, cases: 0, fyc: 0, producing: 0 };
+    unitMap[u].count++;
+    unitMap[u].cases     += row.ytdCases;
+    unitMap[u].fyc       += row.ytdFyc;
+    if (row.hasProduced) unitMap[u].producing++;
+  }
+  const unitRows = Object.values(unitMap).sort((a, b) => b.fyc - a.fyc);
+
+  const totalCases     = advisorRows.reduce((s, r) => s + r.ytdCases, 0);
+  const totalFyc       = advisorRows.reduce((s, r) => s + r.ytdFyc,   0);
+  const producingCount = advisorRows.filter(r => r.hasProduced).length;
+  const monthLabel     = MONTH_LABELS[monthIdx];
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-base font-bold" style={{ fontFamily: 'AIA Everest', color: '#1C1C28' }}>
+            90 Day RACE
+          </h2>
+          <p className="text-xs mt-0.5" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+            YTD as of {monthLabel} · {batch.desc}
+          </p>
+        </div>
+
+        {/* Batch selector — grows naturally as batches are added */}
+        <div className="flex gap-1.5 flex-wrap">
+          {RACE_BATCHES.map(b => (
+            <button
+              key={b.key}
+              onClick={() => setBatchKey(b.key)}
+              className="px-3 py-1.5 rounded text-xs transition-colors"
+              style={{
+                fontFamily: 'AIA Everest',
+                fontWeight: batchKey === b.key ? 700 : 500,
+                backgroundColor: batchKey === b.key ? '#D31145' : '#fff',
+                color: batchKey === b.key ? '#fff' : '#6B7180',
+                border: `1px solid ${batchKey === b.key ? '#D31145' : '#E8E9ED'}`,
+              }}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Scorecards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Advisors in Batch', value: batchAdvisors.length, mono: false },
+          { label: 'Producing',         value: `${producingCount} / ${batchAdvisors.length}`, mono: false },
+          { label: 'Total Cases',       value: totalCases, mono: true },
+          { label: 'Total FYC',         value: `₱${(totalFyc / 1000).toFixed(1)}k`, mono: true },
+        ].map(({ label, value, mono }) => (
+          <div key={label} className="bg-white rounded-xl p-4" style={{ border: '1px solid #E8E9ED' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#6B7180', fontFamily: 'AIA Everest' }}>
+              {label}
+            </p>
+            <p
+              className="text-xl font-extrabold"
+              style={{ fontFamily: mono ? 'DM Mono, monospace' : 'AIA Everest', color: '#1C1C28' }}
+            >
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {batchAdvisors.length === 0 ? (
+        <EmptyState
+          title="No advisors in this batch"
+          message={`No advisors found with an appointment date between ${batch.start} and ${batch.end}. Make sure the PADATE / APPTDATE column is present in the uploaded file.`}
+        />
+      ) : (
+        <>
+          {/* ── Unit Summary ── */}
+          <section>
+            <h3 className="text-xs font-bold uppercase tracking-wide mb-2" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>
+              By Unit
+            </h3>
+            <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E8E9ED' }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    {['Unit', 'Advisors', 'Producing', 'Cases', 'FYC'].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unitRows.map((u, i) => (
+                    <tr key={u.unitName} className="border-b border-gray-50 even:bg-gray-50">
+                      <td className="py-2 px-3 font-semibold text-[12px]" style={{ color: '#1C1C28' }}>{u.unitName}</td>
+                      <td className="py-2 px-3 text-gray-500 text-[12px]">{u.count}</td>
+                      <td className="py-2 px-3 text-[12px]">
+                        <span className="font-semibold" style={{ color: u.producing > 0 ? '#4E9A51' : '#6B7180' }}>
+                          {u.producing}
+                        </span>
+                        <span className="text-gray-400"> / {u.count}</span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#1C1C28' }}>{u.cases}</td>
+                      <td className="py-2 px-3 text-right font-bold" style={{ fontFamily: 'DM Mono, monospace', color: '#D31145' }}>
+                        ₱{(u.fyc / 1000).toFixed(1)}k
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* ── Individual Leaderboard ── */}
+          <section>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wide" style={{ fontFamily: 'AIA Everest', color: '#6B7180' }}>
+                Individual Leaderboard
+              </h3>
+              {/* Sort toggle */}
+              <div className="flex gap-1">
+                {[{ key: 'fyc', label: 'Sort by FYC' }, { key: 'cases', label: 'Sort by Cases' }].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSortBy(opt.key)}
+                    className="px-2.5 py-1 rounded text-[11px] transition-colors"
+                    style={{
+                      fontFamily: 'AIA Everest',
+                      fontWeight: sortBy === opt.key ? 700 : 500,
+                      backgroundColor: sortBy === opt.key ? '#1C1C28' : '#fff',
+                      color: sortBy === opt.key ? '#fff' : '#6B7180',
+                      border: `1px solid ${sortBy === opt.key ? '#1C1C28' : '#E8E9ED'}`,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E8E9ED' }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    {['#', 'Advisor', 'Unit', 'Licensed', 'Cases', 'FYC'].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white bg-[#D31145]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((row, i) => (
+                    <tr key={row.agent.code} className="border-b border-gray-50 even:bg-gray-50 hover:bg-red-50/30">
+                      <td className="py-2 px-3 font-bold text-gray-400 text-[11px] w-8">{i + 1}</td>
+                      <td className="py-2 px-3">
+                        <p className="font-semibold text-[12px]" style={{ color: '#1C1C28' }}>{row.agent.name}</p>
+                        <p className="text-[10px]" style={{ color: '#6B7180' }}>{row.agent.segment || '—'}</p>
+                      </td>
+                      <td className="py-2 px-3 text-[11px] text-gray-500">{row.agent.unitName || '—'}</td>
+                      <td className="py-2 px-3 text-[11px] text-gray-500">{row.licenseMonthLabel}</td>
+                      <td className="py-2 px-3 text-center">
+                        <span
+                          className="font-bold text-[13px]"
+                          style={{ fontFamily: 'DM Mono, monospace', color: row.ytdCases > 0 ? '#1C1C28' : '#B0B3BC' }}
+                        >
+                          {row.ytdCases}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <span
+                          className="font-bold text-[12px]"
+                          style={{ fontFamily: 'DM Mono, monospace', color: row.ytdFyc > 0 ? '#D31145' : '#B0B3BC' }}
+                        >
+                          {row.ytdFyc > 0 ? `₱${(row.ytdFyc / 1000).toFixed(1)}k` : '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );
